@@ -17,7 +17,7 @@ jobs:
         include:
           - platform: 'windows-latest'
             args: ''
-          - platform: 'ubuntu-latest'
+          - platform: 'ubuntu-22.04'
             args: ''
 
     runs-on: ${{ matrix.platform }}
@@ -34,7 +34,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'ubuntu-latest' && 'x86_64-unknown-linux-gnu' || '' }}
+          targets: ${{ runner.os == 'Linux' && 'x86_64-unknown-linux-gnu' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -42,7 +42,7 @@ jobs:
           workspaces: './src-tauri -> target'
 
       - name: Install Linux dependencies (Ubuntu only)
-        if: matrix.platform == 'ubuntu-latest'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -55,6 +55,7 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
+            patchelf \
             rpm
 
       - name: Install frontend dependencies
