@@ -149,5 +149,25 @@ Once active, navigate to **Settings** (gear icon) in the app, type `ws://localho
 
 ---
 
+## 🐳 Docker Deployment
+
+You can host both the web client workspace and the Yjs collaboration server together using Docker and Docker Compose.
+
+### Quick Start
+To build the images and run the containers in the background, execute:
+```bash
+docker-compose up -d --build
+```
+
+### Services Launched
+*   **workspace-web (Port 80):** Multi-stage build that compiles the Next.js static site and serves it via Nginx on port 80.
+*   **yjs-server (Port 1234):** Runs the Yjs websocket collaboration server on port 1234.
+
+Once active:
+*   Open `http://localhost` in your browser to access the web application.
+*   Navigate to **Settings** (gear icon) in the web app, and type `ws://localhost:1234` in the server URL field to establish the real-time syncing.
+
+---
+
 ## 📄 License
 This project is licensed for internal team use. Please refer to your project manager for licensing guidelines.

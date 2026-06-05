@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  workspace-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    restart: always
+    depends_on:
+      - yjs-server
+
+  yjs-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.yjs
+    ports:
+      - "1234:1234"
+    restart: always
+    environment:
+      - PORT=1234
+      - HOST=0.0.0.0
