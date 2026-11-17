@@ -5,7 +5,7 @@ export type ScrumRole =
   | "developer"
   | "stakeholder";
 
-export type AuthProviderType = "local" | "oidc";
+export type AuthProviderType = "local" | "oidc" | "ldap";
 
 export interface AuthUser {
   id: string;

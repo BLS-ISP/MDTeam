@@ -7,11 +7,13 @@ import {
   requireRoleAction,
 } from "./auth/jwtSession.js";
 import { handleOidcCallback, handleOidcLoginRedirect } from "./auth/oidcClient.js";
+import { authenticateViaLdap, isLdapEnabled } from "./auth/ldapClient.js";
 import {
   authenticateLocalUser,
   createLocalUserAccount,
   deleteUserAccount,
   ensureUserStore,
+  findOrProvisionLdapUser,
   getOidcServerConfig,
   getWebhookConfig,
   listPublicUsers,
@@ -62,15 +64,25 @@ async function routeApiRequest(
       version: "1.0.0",
       oidcEnabled: Boolean(oidc.enabled && oidc.clientId),
       oidcProvider: oidc.provider,
+      ldapEnabled: isLdapEnabled(),
+      ldapDomain: process.env.LDAP_DOMAIN || "",
       timestamp: new Date().toISOString(),
     });
     return;
   }
 
-  // 2. Local + Session Auth
+  // 2. Local + LDAP + Session Auth
   if (pathname === "/api/auth/login" && method === "POST") {
     const body = await readJsonBody<{ username?: string; password?: string }>(req);
-    const user = await authenticateLocalUser(body.username || "", body.password || "");
+    const rawUsername = body.username || "";
+    const rawPassword = body.password || "";
+    let user = await authenticateLocalUser(rawUsername, rawPassword);
+    if (!user && isLdapEnabled()) {
+      const ldapProfile = await authenticateViaLdap(rawUsername, rawPassword);
+      if (ldapProfile) {
+        user = await findOrProvisionLdapUser(ldapProfile);
+      }
+    }
     if (!user) {
       sendError(res, 401, "Invalid username or password", "INVALID_CREDENTIALS");
       return;

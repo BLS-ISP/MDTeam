@@ -130,6 +130,66 @@ export async function findOrProvisionOidcUser(profile: {
   return sanitizePublicUser(created);
 }
 
+export async function findOrProvisionLdapUser(profile: {
+  dn: string;
+  username: string;
+  displayName: string;
+  email: string;
+  role: ScrumRole;
+}): Promise<AuthUser> {
+  const store = await ensureUserStore();
+  const now = new Date().toISOString();
+  const cleanDn = profile.dn.trim();
+  const cleanEmail = profile.email.trim().toLowerCase();
+  const cleanUser = profile.username.trim().toLowerCase();
+
+  const existing = store.users.find(
+    (u) =>
+      (u.ldapDn && u.ldapDn.toLowerCase() === cleanDn.toLowerCase()) ||
+      (u.authProvider === "ldap" &&
+        (u.username.toLowerCase() === cleanUser ||
+          (cleanEmail && u.email.toLowerCase() === cleanEmail)))
+  );
+
+  if (existing) {
+    existing.ldapDn = cleanDn;
+    existing.authProvider = "ldap";
+    existing.lastLoginAt = now;
+    if (isValidScrumRole(profile.role)) existing.role = profile.role;
+    if (profile.displayName.trim()) existing.displayName = profile.displayName.trim();
+    if (cleanEmail) existing.email = cleanEmail;
+    await enqueueStoreSave(store);
+    return sanitizePublicUser(existing);
+  }
+
+  const baseUsername =
+    (cleanUser || cleanEmail.split("@")[0] || "ldap-user")
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "ldap-user";
+  let uniqueUsername = baseUsername;
+  let suffix = 1;
+  while (store.users.some((u) => u.username.toLowerCase() === uniqueUsername)) {
+    suffix += 1;
+    uniqueUsername = `${baseUsername}-${suffix}`;
+  }
+
+  const created: StoredUserRecord = {
+    id: `usr-${crypto.randomBytes(6).toString("hex")}`,
+    username: uniqueUsername,
+    displayName: profile.displayName.trim() || uniqueUsername,
+    email: cleanEmail || `${uniqueUsername}@ldap.local`,
+    handle: normalizeHandle(uniqueUsername, uniqueUsername),
+    role: isValidScrumRole(profile.role) ? profile.role : "developer",
+    authProvider: "ldap",
+    ldapDn: cleanDn,
+    createdAt: now,
+    lastLoginAt: now,
+  };
+  store.users.push(created);
+  await enqueueStoreSave(store);
+  return sanitizePublicUser(created);
+}
+
 export async function createLocalUserAccount(input: {
   username: string;
   displayName: string;

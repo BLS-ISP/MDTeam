@@ -1,8 +1,20 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type React from "react";
 import type { WorkspaceFile } from "../utils/issueEngine";
+
+const DEFAULT_LOCAL_YJS_URL = "ws://localhost:1234";
+
+export function resolveBrowserAutoYjsUrl(
+  loc: { protocol: string; host: string; port: string },
+  isTauriRuntime: boolean
+): string | null {
+  if (isTauriRuntime || !loc.host || loc.port === "3000") {
+    return null;
+  }
+  return `${loc.protocol === "https:" ? "wss:" : "ws:"}//${loc.host}/ws`;
+}
 
 export interface CollaboratorPresence {
   name: string;
@@ -30,18 +42,48 @@ export function useYjsCollaboration({
 }: UseYjsCollaborationParams) {
   const [editorAInstance, setEditorAInstance] = useState<any>(null);
   const [editorBInstance, setEditorBInstance] = useState<any>(null);
-  const [yjsUrl, setYjsUrl] = useState<string>("ws://localhost:1234");
+  const [yjsUrl, setYjsUrlState] = useState<string>(DEFAULT_LOCAL_YJS_URL);
+  const customYjsUrlSetRef = useRef<boolean>(false);
+  const setYjsUrl: React.Dispatch<React.SetStateAction<string>> = useCallback((next) => {
+    customYjsUrlSetRef.current = true;
+    setYjsUrlState(next);
+  }, []);
   const [yjsStatus, setYjsStatus] = useState<"connected" | "connecting" | "offline">("offline");
   const [collaborators, setCollaborators] = useState<CollaboratorPresence[]>([
     { name: "Bob Dev", color: "#ef4444", activeFile: "arc42/01_introduction_goals.md", cursorLine: 12 },
     { name: "Alice Arch", color: "#10b981", activeFile: "arc42/02_constraints.md", cursorLine: 5 },
   ]);
 
+  // Auto-detect reverse-proxy WSS/WS endpoint on NethServer 8 / Docker browser deployments
+  useEffect(() => {
+    if (typeof window === "undefined" || customYjsUrlSetRef.current) return;
+    const isTauriRuntime = Boolean(
+      (window as unknown as { __TAURI__?: unknown }).__TAURI__
+    );
+    const autoUrl = resolveBrowserAutoYjsUrl(window.location, isTauriRuntime);
+    if (autoUrl) {
+      setYjsUrlState(autoUrl);
+    }
+  }, []);
+
   // WebSocket reachability probe
   useEffect(() => {
     if (!yjsUrl) {
       setYjsStatus("offline");
       return;
+    }
+    if (
+      typeof window !== "undefined" &&
+      !customYjsUrlSetRef.current &&
+      yjsUrl === DEFAULT_LOCAL_YJS_URL
+    ) {
+      const isTauriRuntime = Boolean(
+        (window as unknown as { __TAURI__?: unknown }).__TAURI__
+      );
+      const autoUrl = resolveBrowserAutoYjsUrl(window.location, isTauriRuntime);
+      if (autoUrl && autoUrl !== yjsUrl) {
+        return;
+      }
     }
     setYjsStatus("connecting");
     let ws: WebSocket | null = null;

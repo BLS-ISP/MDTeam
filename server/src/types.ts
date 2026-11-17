@@ -5,7 +5,7 @@ export type ScrumRole =
   | "developer"
   | "stakeholder";
 
-export type AuthProviderType = "local" | "oidc";
+export type AuthProviderType = "local" | "oidc" | "ldap";
 
 export interface AuthUser {
   id: string;
@@ -23,6 +23,7 @@ export interface StoredUserRecord extends AuthUser {
   passwordHash?: string;
   passwordSalt?: string;
   oidcSubject?: string;
+  ldapDn?: string;
 }
 
 export type WebhookEventType =
