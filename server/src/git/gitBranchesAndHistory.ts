@@ -1,6 +1,12 @@
 import { HttpError } from "../httpHelpers.js";
 import type { AuthUser } from "../types.js";
-import { execGitSafe, sanitizeGitRef, sanitizeRepoRelativePath } from "./gitSanitizer.js";
+import { withProjectGitLock } from "./gitMutex.js";
+import {
+  execGitSafe,
+  sanitizeGitRef,
+  sanitizeProjectId,
+  sanitizeRepoRelativePath,
+} from "./gitSanitizer.js";
 import {
   ensureProjectRepository,
   syncProjectGitRemote,
@@ -60,42 +66,45 @@ export async function checkoutProjectBranch(
   createNew: boolean,
   actor: AuthUser
 ): Promise<{ branch: string }> {
-  const { repoDir } = await ensureProjectRepository(rawProjectId);
-  const safeBranch = sanitizeGitRef(rawBranch);
+  const projectId = sanitizeProjectId(rawProjectId);
+  return withProjectGitLock(projectId, async () => {
+    const { repoDir } = await ensureProjectRepository(projectId);
+    const safeBranch = sanitizeGitRef(rawBranch);
 
-  if (createNew) {
-    await execGitSafe(repoDir, ["checkout", "-b", safeBranch], actor);
-    return { branch: safeBranch };
-  }
+    if (createNew) {
+      await execGitSafe(repoDir, ["checkout", "-b", safeBranch], actor);
+      return { branch: safeBranch };
+    }
 
-  const localCheck = await execGitSafe(
-    repoDir,
-    ["show-ref", "--verify", "--quiet", `refs/heads/${safeBranch}`],
-    actor,
-    true
-  );
-  if (localCheck.exitCode === 0) {
+    const localCheck = await execGitSafe(
+      repoDir,
+      ["show-ref", "--verify", "--quiet", `refs/heads/${safeBranch}`],
+      actor,
+      true
+    );
+    if (localCheck.exitCode === 0) {
+      await execGitSafe(repoDir, ["checkout", safeBranch], actor);
+      return { branch: safeBranch };
+    }
+
+    const remoteCheck = await execGitSafe(
+      repoDir,
+      ["show-ref", "--verify", "--quiet", `refs/remotes/origin/${safeBranch}`],
+      actor,
+      true
+    );
+    if (remoteCheck.exitCode === 0) {
+      await execGitSafe(
+        repoDir,
+        ["checkout", "-b", safeBranch, "--track", `origin/${safeBranch}`],
+        actor
+      );
+      return { branch: safeBranch };
+    }
+
     await execGitSafe(repoDir, ["checkout", safeBranch], actor);
     return { branch: safeBranch };
-  }
-
-  const remoteCheck = await execGitSafe(
-    repoDir,
-    ["show-ref", "--verify", "--quiet", `refs/remotes/origin/${safeBranch}`],
-    actor,
-    true
-  );
-  if (remoteCheck.exitCode === 0) {
-    await execGitSafe(
-      repoDir,
-      ["checkout", "-b", safeBranch, "--track", `origin/${safeBranch}`],
-      actor
-    );
-    return { branch: safeBranch };
-  }
-
-  await execGitSafe(repoDir, ["checkout", safeBranch], actor);
-  return { branch: safeBranch };
+  });
 }
 
 export async function commitWorkingProjectChanges(
@@ -104,28 +113,31 @@ export async function commitWorkingProjectChanges(
   pushAfter: boolean,
   actor: AuthUser
 ): Promise<{ committed: boolean; commitSha: string; pushed: boolean }> {
-  const { projectId, repoDir } = await ensureProjectRepository(rawProjectId);
+  const projectId = sanitizeProjectId(rawProjectId);
   const cleanMsg = (message || "").trim();
   if (!cleanMsg) {
     throw new HttpError(400, "Commit message cannot be empty", "EMPTY_COMMIT_MESSAGE");
   }
 
-  await execGitSafe(repoDir, ["add", "-A"], actor);
-  const status = await execGitSafe(repoDir, ["status", "--porcelain"], actor);
-  let committed = false;
-  if (status.stdout.trim()) {
-    await execGitSafe(repoDir, ["commit", "-m", cleanMsg], actor);
-    committed = true;
-  }
+  return withProjectGitLock(projectId, async () => {
+    const { repoDir } = await ensureProjectRepository(projectId);
+    await execGitSafe(repoDir, ["add", "-A"], actor);
+    const status = await execGitSafe(repoDir, ["status", "--porcelain"], actor);
+    let committed = false;
+    if (status.stdout.trim()) {
+      await execGitSafe(repoDir, ["commit", "-m", cleanMsg], actor);
+      committed = true;
+    }
 
-  const head = await execGitSafe(repoDir, ["rev-parse", "--short", "HEAD"], actor, true);
-  let pushed = false;
-  if (pushAfter) {
-    const syncRes = await syncProjectGitRemote(projectId, { direction: "push" }, actor);
-    pushed = syncRes.ok;
-  }
+    const head = await execGitSafe(repoDir, ["rev-parse", "--short", "HEAD"], actor, true);
+    let pushed = false;
+    if (pushAfter) {
+      const syncRes = await syncProjectGitRemote(projectId, { direction: "push" }, actor);
+      pushed = syncRes.ok;
+    }
 
-  return { committed, commitSha: head.stdout.trim(), pushed };
+    return { committed, commitSha: head.stdout.trim(), pushed };
+  });
 }
 
 export async function getProjectFileGitHistory(

@@ -13,6 +13,7 @@ import {
   configureProjectGitRemote,
   deleteProjectWorkspace,
   generateAndSaveProjectSshKey,
+  generatePreCloneSshKeyPair,
   testGitRemoteConnection,
 } from "../git/gitCloneAndRemote.js";
 import {
@@ -20,6 +21,7 @@ import {
   getStoredProjectRecord,
   toPublicProjectSummary,
 } from "../git/gitCredentialsStore.js";
+import { readProjectCodeSnippet } from "../git/serverGitBridge.js";
 import { HttpError, readJsonBody, sendJson } from "../httpHelpers.js";
 import type { GitAuthType, ProjectVisibility } from "../types.js";
 
@@ -37,6 +39,15 @@ export async function handleProjectGitTopRoutes(
   pathname: string,
   method: string
 ): Promise<boolean> {
+  if (pathname === "/api/projects/git/ssh-key-preview" && method === "POST") {
+    const user = await requireRoleAction(req, res, "connect_git_repo");
+    if (!user) return true;
+    const body = await readJsonBody<{ comment?: string }>(req);
+    const generated = generatePreCloneSshKeyPair(body.comment);
+    sendJson(res, 200, generated);
+    return true;
+  }
+
   if (pathname === "/api/projects/git/test" && method === "POST") {
     const user = await requireRoleAction(req, res, "connect_git_repo");
     if (!user) return true;
@@ -46,6 +57,7 @@ export async function handleProjectGitTopRoutes(
       authType?: GitAuthType;
       httpsUsername?: string;
       httpsToken?: string;
+      sshPrivateKey?: string;
     }>(req);
     if (body.projectId) {
       await assertProjectAccess(body.projectId, user);
@@ -56,6 +68,7 @@ export async function handleProjectGitTopRoutes(
       authType: body.authType,
       httpsUsername: body.httpsUsername,
       httpsToken: body.httpsToken,
+      sshPrivateKey: body.sshPrivateKey,
     });
     sendJson(res, 200, result);
     return true;
@@ -73,6 +86,7 @@ export async function handleProjectGitTopRoutes(
       httpsUsername?: string;
       httpsToken?: string;
       sshPrivateKey?: string;
+      sshPublicKey?: string;
       scaffoldMdTeam?: boolean;
       visibility?: ProjectVisibility;
     }>(req);
@@ -86,6 +100,7 @@ export async function handleProjectGitTopRoutes(
         httpsUsername: body.httpsUsername,
         httpsToken: body.httpsToken,
         sshPrivateKey: body.sshPrivateKey,
+        sshPublicKey: body.sshPublicKey,
         scaffoldMdTeam: Boolean(body.scaffoldMdTeam),
         visibility: body.visibility,
       },
@@ -235,6 +250,25 @@ export async function handleProjectGitSubRoutes(
     }
     const content = await getProjectFileAtCommit(projectId, sha, filePath);
     sendJson(res, 200, { sha, path: filePath, content });
+    return true;
+  }
+
+  if (
+    (subRoute === "/code" || subRoute === "/code/" || subRoute.startsWith("/code/")) &&
+    method === "GET"
+  ) {
+    const user = await requireAuthenticatedUser(req, res);
+    if (!user) return true;
+    await assertProjectAccess(projectId, user);
+    const wildcardPath = subRoute.startsWith("/code/")
+      ? safeDecode(subRoute.slice("/code/".length))
+      : "";
+    const filePath = wildcardPath || url.searchParams.get("path") || "";
+    if (!filePath) {
+      throw new HttpError(400, "Query param 'path' is required", "MISSING_PATH");
+    }
+    const snippet = await readProjectCodeSnippet(projectId, filePath);
+    sendJson(res, 200, snippet);
     return true;
   }
 

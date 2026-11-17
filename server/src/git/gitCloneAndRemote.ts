@@ -18,13 +18,14 @@ import {
   toPublicProjectSummary,
   upsertStoredProjectRecord,
 } from "./gitCredentialsStore.js";
+import { withProjectGitLock } from "./gitMutex.js";
 import {
   execGitSafe,
   getReposBaseDir,
   resolveProjectDir,
   sanitizeGitRef,
   sanitizeProjectId,
-  sanitizeRemoteUrl,
+  validateRemoteUrlWithDns,
 } from "./gitSanitizer.js";
 import { ensureProjectRepository, listProjectFilesAndAssets } from "./serverGitBridge.js";
 
@@ -34,6 +35,17 @@ export interface RemoteTestInput {
   authType?: GitAuthType;
   httpsUsername?: string;
   httpsToken?: string;
+  sshPrivateKey?: string;
+}
+
+export function generatePreCloneSshKeyPair(comment?: string): {
+  sshPublicKey: string;
+  sshPrivateKey: string;
+} {
+  const safeComment =
+    (comment || "").replace(/[\r\n\0]/g, "").trim().slice(0, 80) || "mdteam-deploy-key";
+  const { publicKey, privateKeyPem } = generateEd25519OpenSshKeyPair(safeComment);
+  return { sshPublicKey: publicKey, sshPrivateKey: privateKeyPem };
 }
 
 export async function testGitRemoteConnection(input: RemoteTestInput): Promise<{
@@ -45,7 +57,7 @@ export async function testGitRemoteConnection(input: RemoteTestInput): Promise<{
   const { cleanUrl, extractedUser, extractedToken } = extractEmbeddedUrlCredentials(
     input.remoteUrl
   );
-  const validatedUrl = sanitizeRemoteUrl(cleanUrl);
+  const validatedUrl = await validateRemoteUrlWithDns(cleanUrl);
   if (!validatedUrl) {
     throw new HttpError(400, "Git remote URL is required", "MISSING_REMOTE_URL");
   }
@@ -57,12 +69,14 @@ export async function testGitRemoteConnection(input: RemoteTestInput): Promise<{
     (stored?.encryptedToken ? decryptGitSecret(stored.encryptedToken) : "");
   const effectiveUser =
     extractedUser || input.httpsUsername || stored?.httpsUsername || "x-access-token";
-  const effectiveSshKey = stored?.encryptedSshPrivateKey
-    ? decryptGitSecret(stored.encryptedSshPrivateKey)
-    : "";
+  const effectiveSshKey =
+    input.sshPrivateKey ||
+    (stored?.encryptedSshPrivateKey ? decryptGitSecret(stored.encryptedSshPrivateKey) : "");
   const effectiveAuthType: GitAuthType =
     extractedToken || input.httpsToken
       ? "https"
+      : input.sshPrivateKey
+      ? "ssh"
       : input.authType || stored?.authType || "none";
 
   const authCtx = await prepareGitAuthExecution({
@@ -173,6 +187,7 @@ export interface CloneProjectInput {
   httpsUsername?: string;
   httpsToken?: string;
   sshPrivateKey?: string;
+  sshPublicKey?: string;
   scaffoldMdTeam?: boolean;
   visibility?: ProjectVisibility;
 }
@@ -184,103 +199,110 @@ export async function cloneRemoteProjectRepository(
   const projectId = sanitizeProjectId(input.projectId);
   const repoDir = resolveProjectDir(projectId);
 
-  const alreadyExists = await fs
-    .stat(repoDir)
-    .then(() => true)
-    .catch(() => false);
-  if (alreadyExists) {
-    throw new HttpError(
-      409,
-      `A project workspace named '${projectId}' already exists on this server`,
-      "PROJECT_EXISTS"
+  return withProjectGitLock(projectId, async () => {
+    const alreadyExists = await fs
+      .stat(repoDir)
+      .then(() => true)
+      .catch(() => false);
+    if (alreadyExists) {
+      throw new HttpError(
+        409,
+        `A project workspace named '${projectId}' already exists on this server`,
+        "PROJECT_EXISTS"
+      );
+    }
+
+    const { cleanUrl, extractedUser, extractedToken } = extractEmbeddedUrlCredentials(
+      input.remoteUrl
     );
-  }
+    const validatedUrl = await validateRemoteUrlWithDns(cleanUrl);
+    if (!validatedUrl) {
+      throw new HttpError(400, "Valid Git remote URL is required to clone", "MISSING_REMOTE_URL");
+    }
 
-  const { cleanUrl, extractedUser, extractedToken } = extractEmbeddedUrlCredentials(
-    input.remoteUrl
-  );
-  const validatedUrl = sanitizeRemoteUrl(cleanUrl);
-  if (!validatedUrl) {
-    throw new HttpError(400, "Valid Git remote URL is required to clone", "MISSING_REMOTE_URL");
-  }
+    const effectiveToken = (extractedToken || input.httpsToken || "").trim();
+    const effectiveUser =
+      (extractedUser || input.httpsUsername || "").trim() ||
+      (effectiveToken ? "x-access-token" : "");
+    const effectiveAuthType: GitAuthType = effectiveToken
+      ? "https"
+      : input.sshPrivateKey
+      ? "ssh"
+      : input.authType || "none";
+    const effectiveSshPub =
+      effectiveAuthType === "ssh" && input.sshPublicKey
+        ? input.sshPublicKey.replace(/[\r\n\0]/g, "").trim()
+        : undefined;
 
-  const effectiveToken = (extractedToken || input.httpsToken || "").trim();
-  const effectiveUser =
-    (extractedUser || input.httpsUsername || "").trim() ||
-    (effectiveToken ? "x-access-token" : "");
-  const effectiveAuthType: GitAuthType = effectiveToken
-    ? "https"
-    : input.sshPrivateKey
-    ? "ssh"
-    : input.authType || "none";
+    const authCtx = await prepareGitAuthExecution({
+      remoteUrl: validatedUrl,
+      authType: effectiveAuthType,
+      httpsUsername: effectiveUser,
+      httpsToken: effectiveToken,
+      sshPrivateKey: input.sshPrivateKey,
+    });
 
-  const authCtx = await prepareGitAuthExecution({
-    remoteUrl: validatedUrl,
-    authType: effectiveAuthType,
-    httpsUsername: effectiveUser,
-    httpsToken: effectiveToken,
-    sshPrivateKey: input.sshPrivateKey,
+    await fs.mkdir(getReposBaseDir(), { recursive: true });
+
+    try {
+      const cloneArgs = [...authCtx.gitConfigArgs, "clone"];
+      if (input.branch && input.branch.trim()) {
+        cloneArgs.push("--branch", sanitizeGitRef(input.branch.trim()));
+      }
+      cloneArgs.push("--", validatedUrl, repoDir);
+
+      const cloneRes = await execGitSafe(
+        getReposBaseDir(),
+        cloneArgs,
+        actor,
+        true,
+        authCtx.extraEnv
+      );
+      if (cloneRes.exitCode !== 0) {
+        await fs.rm(repoDir, { recursive: true, force: true }).catch(() => undefined);
+        const cleanErr = authCtx.redactSecrets(cloneRes.stderr.trim() || cloneRes.stdout.trim());
+        throw new HttpError(502, `Git clone failed: ${cleanErr}`, "GIT_CLONE_FAILED");
+      }
+
+      await execGitSafe(repoDir, ["config", "user.name", actor.displayName || actor.username]);
+      await execGitSafe(
+        repoDir,
+        ["config", "user.email", actor.email || `${actor.username}@mdteam.local`]
+      );
+
+      if (input.scaffoldMdTeam) {
+        await scaffoldMissingMdTeamDocs(repoDir, actor);
+      }
+
+      const branchOut = await execGitSafe(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"], actor, true);
+      const activeBranch = branchOut.stdout.trim() || input.branch?.trim() || "main";
+
+      const stored = await upsertStoredProjectRecord(
+        projectId,
+        {
+          displayName: (input.displayName || "").trim() || projectId,
+          remoteUrl: validatedUrl,
+          authType: effectiveAuthType,
+          httpsUsername: effectiveUser,
+          httpsToken: effectiveToken || undefined,
+          sshPrivateKey: input.sshPrivateKey || undefined,
+          sshPublicKey: effectiveSshPub,
+          defaultBranch: activeBranch,
+          visibility: input.visibility === "private" ? "private" : "team",
+        },
+        actor
+      );
+
+      const listing = await listProjectFilesAndAssets(projectId);
+      return {
+        project: toPublicProjectSummary(stored),
+        filesCount: listing.files.length,
+        activeBranch,
+      };
+    } finally {
+      await authCtx.cleanup();
+    }
   });
-
-  await fs.mkdir(getReposBaseDir(), { recursive: true });
-
-  try {
-    const cloneArgs = [...authCtx.gitConfigArgs, "clone"];
-    if (input.branch && input.branch.trim()) {
-      cloneArgs.push("--branch", sanitizeGitRef(input.branch.trim()));
-    }
-    cloneArgs.push("--", validatedUrl, repoDir);
-
-    const cloneRes = await execGitSafe(
-      getReposBaseDir(),
-      cloneArgs,
-      actor,
-      true,
-      authCtx.extraEnv
-    );
-    if (cloneRes.exitCode !== 0) {
-      await fs.rm(repoDir, { recursive: true, force: true }).catch(() => undefined);
-      const cleanErr = authCtx.redactSecrets(cloneRes.stderr.trim() || cloneRes.stdout.trim());
-      throw new HttpError(502, `Git clone failed: ${cleanErr}`, "GIT_CLONE_FAILED");
-    }
-
-    await execGitSafe(repoDir, ["config", "user.name", actor.displayName || actor.username]);
-    await execGitSafe(
-      repoDir,
-      ["config", "user.email", actor.email || `${actor.username}@mdteam.local`]
-    );
-
-    if (input.scaffoldMdTeam) {
-      await scaffoldMissingMdTeamDocs(repoDir, actor);
-    }
-
-    const branchOut = await execGitSafe(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"], actor, true);
-    const activeBranch = branchOut.stdout.trim() || input.branch?.trim() || "main";
-
-    const stored = await upsertStoredProjectRecord(
-      projectId,
-      {
-        displayName: (input.displayName || "").trim() || projectId,
-        remoteUrl: validatedUrl,
-        authType: effectiveAuthType,
-        httpsUsername: effectiveUser,
-        httpsToken: effectiveToken || undefined,
-        sshPrivateKey: input.sshPrivateKey || undefined,
-        defaultBranch: activeBranch,
-        visibility: input.visibility === "private" ? "private" : "team",
-      },
-      actor
-    );
-
-    const listing = await listProjectFilesAndAssets(projectId);
-    return {
-      project: toPublicProjectSummary(stored),
-      filesCount: listing.files.length,
-      activeBranch,
-    };
-  } finally {
-    await authCtx.cleanup();
-  }
 }
 
 export async function configureProjectGitRemote(
@@ -297,67 +319,69 @@ export async function configureProjectGitRemote(
   },
   actor: AuthUser
 ): Promise<PublicProjectSummary> {
-  const { projectId, repoDir } = await ensureProjectRepository(rawProjectId);
+  const projectId = sanitizeProjectId(rawProjectId);
+  return withProjectGitLock(projectId, async () => {
+    const { repoDir } = await ensureProjectRepository(projectId);
 
-  let nextRemoteUrl: string | undefined;
-  let extractedUser = "";
-  let extractedToken = "";
+    let nextRemoteUrl: string | undefined;
+    let extractedUser = "";
+    let extractedToken = "";
 
-  if (typeof patch.remoteUrl === "string") {
-    if (patch.remoteUrl.trim() === "") {
-      await execGitSafe(repoDir, ["remote", "remove", "origin"], actor, true);
-      nextRemoteUrl = "";
-    } else {
-      const ext = extractEmbeddedUrlCredentials(patch.remoteUrl);
-      extractedUser = ext.extractedUser;
-      extractedToken = ext.extractedToken;
-      nextRemoteUrl = sanitizeRemoteUrl(ext.cleanUrl);
-      const existing = await execGitSafe(repoDir, ["remote", "get-url", "origin"], actor, true);
-      if (existing.exitCode === 0) {
-        await execGitSafe(repoDir, ["remote", "set-url", "origin", nextRemoteUrl], actor);
+    if (typeof patch.remoteUrl === "string") {
+      if (patch.remoteUrl.trim() === "") {
+        await execGitSafe(repoDir, ["remote", "remove", "origin"], actor, true);
+        nextRemoteUrl = "";
       } else {
-        await execGitSafe(repoDir, ["remote", "add", "origin", nextRemoteUrl], actor);
+        const ext = extractEmbeddedUrlCredentials(patch.remoteUrl);
+        extractedUser = ext.extractedUser;
+        extractedToken = ext.extractedToken;
+        nextRemoteUrl = await validateRemoteUrlWithDns(ext.cleanUrl);
+        const existing = await execGitSafe(repoDir, ["remote", "get-url", "origin"], actor, true);
+        if (existing.exitCode === 0) {
+          await execGitSafe(repoDir, ["remote", "set-url", "origin", nextRemoteUrl], actor);
+        } else {
+          await execGitSafe(repoDir, ["remote", "add", "origin", nextRemoteUrl], actor);
+        }
       }
     }
-  }
 
-  if (patch.scaffoldMdTeam) {
-    await scaffoldMissingMdTeamDocs(repoDir, actor);
-  }
+    if (patch.scaffoldMdTeam) {
+      await scaffoldMissingMdTeamDocs(repoDir, actor);
+    }
 
-  const saved = await upsertStoredProjectRecord(
-    projectId,
-    {
-      displayName: patch.displayName,
-      remoteUrl: nextRemoteUrl,
-      authType: extractedToken ? "https" : patch.authType,
-      httpsUsername: extractedUser || patch.httpsUsername,
-      httpsToken: extractedToken || patch.httpsToken,
-      clearToken: patch.clearToken,
-      visibility: patch.visibility,
-    },
-    actor
-  );
+    const saved = await upsertStoredProjectRecord(
+      projectId,
+      {
+        displayName: patch.displayName,
+        remoteUrl: nextRemoteUrl,
+        authType: extractedToken ? "https" : patch.authType,
+        httpsUsername: extractedUser || patch.httpsUsername,
+        httpsToken: extractedToken || patch.httpsToken,
+        clearToken: patch.clearToken,
+        visibility: patch.visibility,
+      },
+      actor
+    );
 
-  return toPublicProjectSummary(saved);
+    return toPublicProjectSummary(saved);
+  });
 }
 
 export async function generateAndSaveProjectSshKey(
   rawProjectId: string,
   actor: AuthUser
 ): Promise<{ sshPublicKey: string; project: PublicProjectSummary }> {
-  const { projectId } = await ensureProjectRepository(rawProjectId);
-  const { publicKey, privateKeyPem } = generateEd25519OpenSshKeyPair(`mdteam@${projectId}`);
-  const saved = await upsertStoredProjectRecord(
-    projectId,
-    {
-      authType: "ssh",
-      sshPublicKey: publicKey,
-      sshPrivateKey: privateKeyPem,
-    },
-    actor
-  );
-  return { sshPublicKey: publicKey, project: toPublicProjectSummary(saved) };
+  const projectId = sanitizeProjectId(rawProjectId);
+  return withProjectGitLock(projectId, async () => {
+    await ensureProjectRepository(projectId);
+    const { publicKey, privateKeyPem } = generateEd25519OpenSshKeyPair(`mdteam@${projectId}`);
+    const saved = await upsertStoredProjectRecord(
+      projectId,
+      { authType: "ssh", sshPublicKey: publicKey, sshPrivateKey: privateKeyPem },
+      actor
+    );
+    return { sshPublicKey: publicKey, project: toPublicProjectSummary(saved) };
+  });
 }
 
 export async function deleteProjectWorkspace(
@@ -369,31 +393,33 @@ export async function deleteProjectWorkspace(
     throw new HttpError(400, "The default workspace cannot be deleted", "CANNOT_DELETE_DEFAULT");
   }
 
-  const stored = await getStoredProjectRecord(projectId);
-  if (actor.role !== "admin" && (!stored?.ownerId || stored.ownerId !== actor.id)) {
-    throw new HttpError(
-      403,
-      "Only an administrator or the project creator can delete this workspace",
-      "DELETE_PROJECT_FORBIDDEN"
-    );
-  }
+  return withProjectGitLock(projectId, async () => {
+    const stored = await getStoredProjectRecord(projectId);
+    if (actor.role !== "admin" && (!stored?.ownerId || stored.ownerId !== actor.id)) {
+      throw new HttpError(
+        403,
+        "Only an administrator or the project creator can delete this workspace",
+        "DELETE_PROJECT_FORBIDDEN"
+      );
+    }
 
-  const baseDir = await fs.realpath(getReposBaseDir()).catch(() => path.resolve(getReposBaseDir()));
-  const repoDir = resolveProjectDir(projectId);
-  const stat = await fs.lstat(repoDir).catch(() => null);
-  if (!stat) {
+    const baseDir = await fs.realpath(getReposBaseDir()).catch(() => path.resolve(getReposBaseDir()));
+    const repoDir = resolveProjectDir(projectId);
+    const stat = await fs.lstat(repoDir).catch(() => null);
+    if (!stat) {
+      await removeStoredProjectRecord(projectId);
+      throw new HttpError(404, `Project '${projectId}' not found`, "PROJECT_NOT_FOUND");
+    }
+    if (stat.isSymbolicLink()) {
+      throw new HttpError(400, "Refusing to delete symbolic link project path", "UNSAFE_DELETE");
+    }
+    const resolvedTarget = await fs.realpath(repoDir);
+    if (!resolvedTarget.startsWith(baseDir + path.sep) || path.dirname(resolvedTarget) !== baseDir) {
+      throw new HttpError(400, "Project path escapes repository root", "PATH_TRAVERSAL");
+    }
+
+    await fs.rm(resolvedTarget, { recursive: true, force: true });
     await removeStoredProjectRecord(projectId);
-    throw new HttpError(404, `Project '${projectId}' not found`, "PROJECT_NOT_FOUND");
-  }
-  if (stat.isSymbolicLink()) {
-    throw new HttpError(400, "Refusing to delete symbolic link project path", "UNSAFE_DELETE");
-  }
-  const resolvedTarget = await fs.realpath(repoDir);
-  if (!resolvedTarget.startsWith(baseDir + path.sep) || path.dirname(resolvedTarget) !== baseDir) {
-    throw new HttpError(400, "Project path escapes repository root", "PATH_TRAVERSAL");
-  }
-
-  await fs.rm(resolvedTarget, { recursive: true, force: true });
-  await removeStoredProjectRecord(projectId);
-  return { deletedProjectId: projectId };
+    return { deletedProjectId: projectId };
+  });
 }

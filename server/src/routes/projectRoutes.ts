@@ -189,9 +189,11 @@ export async function handleProjectRoutes(
         content?: string;
         message?: string;
         action?: string;
+        autoCommit?: boolean;
         files?: Array<{ path: string; content: string }>;
       }>(req);
 
+      const shouldCommit = body.autoCommit !== false;
       const headerAction = req.headers["x-scrum-action"];
       const explicitAction =
         body.action || (typeof headerAction === "string" ? headerAction : undefined);
@@ -200,19 +202,14 @@ export async function handleProjectRoutes(
         const results = [];
         for (const item of body.files) {
           const prev = await readProjectTextFileIfExists(projectId, item.path);
-          enforceFileMutationPermission(
-            user,
-            item.path,
-            item.content,
-            prev,
-            explicitAction
-          );
+          enforceFileMutationPermission(user, item.path, item.content, prev, explicitAction);
           const saved = await upsertProjectTextFile(
             projectId,
             item.path,
             item.content,
             user,
-            body.message
+            body.message,
+            shouldCommit
           );
           results.push(saved.file);
         }
@@ -222,28 +219,19 @@ export async function handleProjectRoutes(
 
       const targetPath = wildcardRel || body.path || "";
       if (!targetPath || typeof body.content !== "string") {
-        throw new HttpError(
-          400,
-          "File 'path' and string 'content' are required",
-          "MISSING_FILE_FIELDS"
-        );
+        throw new HttpError(400, "File 'path' and string 'content' are required", "MISSING_FILE_FIELDS");
       }
 
       const previousContent = await readProjectTextFileIfExists(projectId, targetPath);
-      enforceFileMutationPermission(
-        user,
-        targetPath,
-        body.content,
-        previousContent,
-        explicitAction
-      );
+      enforceFileMutationPermission(user, targetPath, body.content, previousContent, explicitAction);
 
       const saved = await upsertProjectTextFile(
         projectId,
         targetPath,
         body.content,
         user,
-        body.message
+        body.message,
+        shouldCommit
       );
       sendJson(res, 200, saved);
       return true;
