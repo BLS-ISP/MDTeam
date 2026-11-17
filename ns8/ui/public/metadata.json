@@ -1,0 +1,20 @@
+{
+  "name": "MDTeam Workspace",
+  "description": {
+    "en": "Git-native agile project workspace replacing Jira, Confluence, and classic Scrum boards with real-time Markdown and Yjs CRDT collaboration.",
+    "de": "Git-nativer agiler Projekt-Workspace als Ersatz für Jira, Confluence und klassische Scrum-Boards mit Echtzeit-Markdown- und Yjs-CRDT-Zusammenarbeit."
+  },
+  "categories": ["collaboration", "development"],
+  "authors": [
+    {
+      "name": "BLS-ISP Team",
+      "email": "info@bls-isp.ch"
+    }
+  ],
+  "docs": {
+    "documentation_url": "https://github.com/BLS-ISP/MDTeam/blob/master/docs/NETHSERVER8_INSTALLATION.md",
+    "bug_url": "https://github.com/BLS-ISP/MDTeam/issues",
+    "code_url": "https://github.com/BLS-ISP/MDTeam"
+  },
+  "source": "ghcr.io/bls-isp/mdteam-ns8"
+}
