@@ -30,6 +30,8 @@ export interface AuthLoginModalProps {
   currentUser?: AuthUser | null;
   oidcEnabled?: boolean;
   oidcProvider?: OidcProviderPreset;
+  ldapEnabled?: boolean;
+  ldapDomain?: string;
   onLoginSuccess?: (user: AuthUser, token?: string) => void;
   onLoginSubmit?: (username: string, password: string) => Promise<AuthUser>;
   onLogout?: () => Promise<void> | void;
@@ -45,6 +47,8 @@ export function AuthLoginModal({
   currentUser = null,
   oidcEnabled = false,
   oidcProvider = "keycloak",
+  ldapEnabled = false,
+  ldapDomain = "",
   onLoginSuccess,
   onLoginSubmit,
   onLogout,
@@ -252,6 +256,24 @@ export function AuthLoginModal({
             </div>
           )}
 
+          {ldapEnabled && (
+            <div
+              data-testid="ns8-ldap-active-badge"
+              style={{
+                display: "flex", alignItems: "center", gap: "7px", padding: "7px 11px", borderRadius: "7px",
+                border: "1px solid rgba(59, 130, 246, 0.38)", backgroundColor: "rgba(59, 130, 246, 0.1)",
+                color: "var(--text-primary)", fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden",
+              }}
+            >
+              <Server size={13} color="var(--accent-blue)" style={{ flexShrink: 0 }} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                {isEn
+                  ? `NethServer 8 / LDAP Domain Login active${ldapDomain ? ` (${ldapDomain})` : ""}`
+                  : `NethServer 8 / LDAP-Domänenanmeldung aktiv${ldapDomain ? ` (${ldapDomain})` : ""}`}
+              </span>
+            </div>
+          )}
+
           <form onSubmit={handleFormSubmit} style={{ display: "flex", flexDirection: "column", gap: "11px" }}>
             <div>
               <label style={modalLabelStyle}>
@@ -301,12 +323,10 @@ export function AuthLoginModal({
             >
               <Lock size={14} />
               {isSubmitting
-                ? isEn
-                  ? "Signing in..."
-                  : "Anmeldung läuft..."
-                : isEn
-                ? "Sign In with Local Account"
-                : "Mit lokalem Konto anmelden"}
+                ? isEn ? "Signing in..." : "Anmeldung läuft..."
+                : ldapEnabled
+                ? isEn ? "Sign In (LDAP Domain / Local)" : "Anmelden (LDAP-Domäne / Lokal)"
+                : isEn ? "Sign In with Local Account" : "Mit lokalem Konto anmelden"}
             </button>
           </form>
 

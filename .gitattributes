@@ -1,4 +1,4 @@
 .gitattributes text eol=lf
-ns8/imageroot/** text eol=lf
-ns8/*.sh text eol=lf
-ns8/Containerfile text eol=lf
+ns8/** text eol=lf
+ns8/**/*.png binary
+ns8/**/*.ico binary

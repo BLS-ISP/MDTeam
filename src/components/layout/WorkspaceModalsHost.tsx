@@ -84,6 +84,8 @@ export function WorkspaceModalsHost() {
     authUser,
     oidcEnabled,
     oidcProvider,
+    ldapEnabled,
+    ldapDomain,
     activeProjectId,
     sessionToken,
     loginLocal,
@@ -114,6 +116,8 @@ export function WorkspaceModalsHost() {
         currentUser={authUser}
         oidcEnabled={oidcEnabled}
         oidcProvider={oidcProvider}
+        ldapEnabled={ldapEnabled}
+        ldapDomain={ldapDomain}
         onLoginSubmit={loginLocal}
         onLogout={logout}
         onStartOidcLogin={() => startOidcLogin("/")}

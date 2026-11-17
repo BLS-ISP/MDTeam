@@ -24,6 +24,8 @@ interface HealthPayload {
   status?: string;
   oidcEnabled?: boolean;
   oidcProvider?: OidcProviderPreset;
+  ldapEnabled?: boolean;
+  ldapDomain?: string;
 }
 
 export interface UseServerBackendParams {
@@ -56,6 +58,8 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
   const [teamUsers, setTeamUsers] = useState<AuthUser[]>([]);
   const [oidcEnabled, setOidcEnabled] = useState(false);
   const [oidcProvider, setOidcProvider] = useState<OidcProviderPreset>("keycloak");
+  const [ldapEnabled, setLdapEnabled] = useState(false);
+  const [ldapDomain, setLdapDomain] = useState("");
   const [activeProjectId, setActiveProjectId] = useState("default");
   const [availableProjects, setAvailableProjects] = useState<string[]>(["default"]);
   const [gitStatus, setGitStatus] = useState<ServerGitStatusSummary | null>(null);
@@ -210,6 +214,8 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
       if (detectedBase === null || !health) {
         setServerMode(false);
         setResolvedApiBase("");
+        setLdapEnabled(false);
+        setLdapDomain("");
         return;
       }
 
@@ -217,6 +223,8 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
       setServerMode(true);
       setOidcEnabled(Boolean(health.oidcEnabled));
       if (health.oidcProvider) setOidcProvider(health.oidcProvider);
+      setLdapEnabled(Boolean(health.ldapEnabled));
+      setLdapDomain(typeof health.ldapDomain === "string" ? health.ldapDomain : "");
 
       try {
         const me = await apiFetch<{ user: AuthUser }>("/api/auth/me", {}, detectedBase, storedToken);
@@ -429,6 +437,8 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
     teamUsers,
     oidcEnabled,
     oidcProvider,
+    ldapEnabled,
+    ldapDomain,
     activeProjectId,
     availableProjects,
     gitStatus,

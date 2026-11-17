@@ -1,11 +1,10 @@
 # Stage 1: Build NethServer 8 Cockpit UI (@nethserver/ns8-ui-lib + Carbon Vue 2)
 FROM docker.io/library/node:20-slim AS ui-builder
 WORKDIR /usr/src/ui
-ENV NODE_OPTIONS=--openssl-legacy-provider
-COPY ns8/ui/package*.json ./
-RUN npm install --legacy-peer-deps
-COPY ns8/ui/ ./
-RUN npm run build
+COPY ns8/ui/package.json ns8/ui/babel.config.js ns8/ui/vue.config.js ns8/ui/.eslintrc.js ./
+COPY ns8/ui/public ./public
+COPY ns8/ui/src ./src
+RUN npm install --legacy-peer-deps && NODE_OPTIONS=--openssl-legacy-provider npm run build
 
 # Stage 2: Normalize line endings, strip bytecode, and set executable bits on imageroot
 FROM docker.io/library/alpine:3.20 AS imageroot-builder

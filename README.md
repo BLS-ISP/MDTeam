@@ -10,6 +10,8 @@ Available both as a **native cross-platform desktop client (Tauri v2 / Rust)** a
 
 > 📖 **Full Manual:** See the [**User & Administrator Guide (`docs/USER_AND_ADMIN_GUIDE.md`)**](docs/USER_AND_ADMIN_GUIDE.md) for step-by-step Scrum workflows, SSO/OIDC configuration, Webhook setup, and Atlassian migration instructions.
 >
+> 🛡️ **NethServer 8 Module:** Deploy rootless with Traefik HTTPS, OpenLDAP/Active Directory login & Restic backup via [**`docs/NETHSERVER8_INSTALLATION.md`**](docs/NETHSERVER8_INSTALLATION.md).
+>
 > 📦 **Desktop Downloads:** Grab prebuilt installers (`.exe`, `.msi`, `.deb`, `.rpm`, `.AppImage`) from [**GitHub Releases**](https://github.com/BLS-ISP/MDTeam/releases) or the latest [**Release Build Action Artifacts**](https://github.com/BLS-ISP/MDTeam/actions/workflows/build.yml).
 
 ---
@@ -74,8 +76,8 @@ flowchart LR
 * **Live Query Macros (` ```query `):** Embed live, sortable issue tables, progress cards, or ADR matrices inside any Wiki or arc42 document (just like Confluence's Jira Macro).
 * **Approval Write-Lock, Inline Comments & `.docx` Export:** Pages marked `Approved` and ADRs marked `Accepted` lock against accidental edits—requiring **Start New Revision (`In Review`)** or **Supersede ADR (`ADR-000X`)**. Includes text-anchored Inline Comment threads, Git Time-Machine version restore, 6 enterprise templates (PRD, RFC, Post-Mortem, Release Notes, Story Map, Onboarding), and native **Microsoft Word (`.docx`)** & **PDF Book** exports.
 
-### 4. Multi-User Backend, Enterprise SSO, Scrum RBAC & Atlassian Migration
-* **Local & OIDC/OAuth2 SSO Login:** Built-in `scrypt` local accounts plus PKCE + CSRF-protected SSO for **Keycloak**, **Microsoft Entra ID**, **GitHub**, and **GitLab**.
+### 4. Multi-User Backend, NethServer 8 LDAP/AD, OIDC SSO & Scrum RBAC
+* **Local, LDAPv3 / Active Directory & OIDC/OAuth2 SSO Login:** Built-in `scrypt` local accounts, zero-dependency RFC 4511 **OpenLDAP (`rfc2307`) & Samba Active Directory (`ad`)** bind with automatic directory-group-to-Scrum-role synchronization, plus PKCE + CSRF-protected SSO for **Keycloak**, **Microsoft Entra ID**, **GitHub**, and **GitLab**.
 * **Enforced Scrum Role Permissions (Server & UI):**
 
 | Accountability / Role | Product Backlog Order & Goal | Pull to Sprint, Edit Issues & Wiki | Scrum Policy & Ceremonies | Clean Reader, Comments & Review Feedback | User, SSO & Webhook Admin |
@@ -91,9 +93,24 @@ flowchart LR
 
 ---
 
+## 🛡️ NethServer 8 One-Command Installation (`mdteam-ns8`)
+
+Install **MDTeam Workspace** onto any **NethServer 8 (NS8)** cluster node as an isolated, rootless Podman pod with automatic **Traefik Let's Encrypt HTTPS & WSS (`/ws`) routing**, **OpenLDAP / Samba Active Directory single sign-on**, **Directory Group → Scrum Role RBAC mapping**, and **Restic Backup / Restore / Clone** integration:
+
+```bash
+add-module ghcr.io/bls-isp/mdteam-ns8:latest 1
+```
+
+1. In **NS8 Cluster-Admin** (`https://<ns8-host>/cluster-admin`), open **Applications** → **MDTeam Workspace (`mdteam1`)** → **Settings**.
+2. Enter your FQDN (e.g. `mdteam.example.org`), configure **Let's Encrypt** & **HTTP → HTTPS**, bind your **NS8 User Domain** (OpenLDAP or Active Directory), and map directory groups (`Admin`, `Product Owner`, `Scrum Master`, plus default Scrum role).
+3. See the bilingual EN/DE [**NethServer 8 Installation & Administration Guide (`docs/NETHSERVER8_INSTALLATION.md`)**](docs/NETHSERVER8_INSTALLATION.md) for group mapping details, Restic backups, cloning, and CLI updates (`api-cli run update-module`).
+
+---
+
 ## 🐳 Production Docker Deployment (Prebuilt GHCR Images)
 
-Every push to `master` publishes three multi-service images to GitHub Container Registry:
+Every push to `master` publishes four OCI images to GitHub Container Registry:
+* `ghcr.io/bls-isp/mdteam-ns8:latest` — Rootless NethServer 8 module (`imageroot` + Cluster-Admin Cockpit UI)
 * `ghcr.io/bls-isp/mdteam/workspace-web:latest` — Next.js UI + Nginx reverse proxy (`/` UI, `/api/*` → API, `/ws` → Yjs)
 * `ghcr.io/bls-isp/mdteam/api-server:latest` — Zero-dependency Node 20 Auth, RBAC, Git-Bridge & Webhook server
 * `ghcr.io/bls-isp/mdteam/yjs-server:latest` — Real-time CRDT collaboration & Planning Poker server
@@ -188,7 +205,8 @@ Every source and test file across `src/`, `server/src/`, `src-tauri/src/`, and `
 
 ```text
 MDTeam/
-├── docs/                       # Extended User & Administrator Guide
+├── docs/                       # User/Admin Guide & NethServer 8 EN/DE Manual
+├── ns8/                        # NethServer 8 rootless module (imageroot + Cockpit Vue UI)
 ├── issues/ & sprints/          # Git-native atomic tickets (MDT-*.md) & sprints
 ├── arc42/, adrs/, wiki/        # Architecture chapters, ADRs & nested Confluence wiki
 ├── management/ & meetings/     # Product Goal, Capacity/Velocity, DoD/DoR & Retros
