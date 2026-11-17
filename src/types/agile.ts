@@ -1,6 +1,47 @@
 export type IssueType = "epic" | "story" | "bug" | "task" | "spike";
 export type IssueStatus = "backlog" | "ready" | "in-progress" | "review" | "done";
 export type IssuePriority = "critical" | "high" | "medium" | "low";
+export type ReleaseState = "planned" | "unreleased" | "released";
+
+export interface IssueSubtask {
+  id: string;
+  title: string;
+  done: boolean;
+  assignee?: string;
+  estimatedHours?: number;
+  remainingHours?: number;
+}
+
+export interface IssueAttachment {
+  id: string;
+  name: string;
+  path: string;
+  mimeType: string;
+  sizeBytes?: number;
+  addedAt: string;
+  dataUrl?: string;
+}
+
+export interface AgileRelease {
+  id: string;
+  version: string;
+  name: string;
+  targetDate: string;
+  state: ReleaseState;
+  description: string;
+}
+
+export interface ReleaseProgress {
+  version: string;
+  totalIssues: number;
+  doneIssues: number;
+  inProgressIssues: number;
+  openIssues: number;
+  issueProgressPercent: number;
+  totalPoints: number;
+  donePoints: number;
+  pointsProgressPercent: number;
+}
 
 export interface AgileIssue {
   id: string;
@@ -25,6 +66,14 @@ export interface AgileIssue {
   endDate?: string;
   filePath: string;
   isVirtualLegacy?: boolean;
+  // Deep Jira Ticket Mechanics (optional for 100% backward compatibility)
+  subtasks?: IssueSubtask[];
+  attachments?: IssueAttachment[];
+  fixVersion?: string;
+  estimatedHours?: number;
+  loggedHours?: number;
+  remainingHours?: number;
+  reviewAccepted?: boolean;
 }
 
 export interface AgileSprint {
@@ -98,6 +147,10 @@ export interface SprintMetrics {
   burndownSeries: SprintSeriesPoint[];
   burnupSeries: SprintSeriesPoint[];
   cfdSeries: CumulativeFlowDayPoint[];
+  hoursBurndownSeries?: SprintSeriesPoint[];
+  totalEstimatedHours?: number;
+  totalLoggedHours?: number;
+  totalRemainingHours?: number;
 }
 
 export interface GanttBar {

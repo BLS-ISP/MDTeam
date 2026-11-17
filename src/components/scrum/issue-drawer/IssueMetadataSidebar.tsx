@@ -1,9 +1,10 @@
 "use client";
 
 import React from "react";
-import { Calendar, User, Flag } from "lucide-react";
+import { Calendar, User, Flag, Tag } from "lucide-react";
 import {
   AgileIssue,
+  AgileRelease,
   AgileSprint,
   IssuePriority,
   IssueStatus,
@@ -18,6 +19,7 @@ export interface IssueMetadataSidebarProps {
   draft: AgileIssue;
   epics: AgileIssue[];
   sprints: AgileSprint[];
+  releases?: AgileRelease[];
   assigneeOptions: string[];
   candidateBlockers: AgileIssue[];
   currentUser: string;
@@ -42,6 +44,7 @@ export function IssueMetadataSidebar({
   draft,
   epics,
   sprints,
+  releases = [],
   assigneeOptions,
   candidateBlockers,
   currentUser,
@@ -93,9 +96,7 @@ export function IssueMetadataSidebar({
           <select
             className="settings-select"
             value={draft.type}
-            onChange={(e) =>
-              onPersistIfEditing({ ...draft, type: e.target.value as IssueType })
-            }
+            onChange={(e) => onPersistIfEditing({ ...draft, type: e.target.value as IssueType })}
           >
             {(["epic", "story", "bug", "task", "spike"] as IssueType[]).map((tp) => (
               <option key={tp} value={tp}>
@@ -110,9 +111,7 @@ export function IssueMetadataSidebar({
           <select
             className="settings-select"
             value={draft.status}
-            onChange={(e) =>
-              onPersistIfEditing({ ...draft, status: e.target.value as IssueStatus })
-            }
+            onChange={(e) => onPersistIfEditing({ ...draft, status: e.target.value as IssueStatus })}
           >
             {(["backlog", "ready", "in-progress", "review", "done"] as IssueStatus[]).map((st) => (
               <option key={st} value={st}>
@@ -132,9 +131,7 @@ export function IssueMetadataSidebar({
         <select
           className="settings-select"
           value={draft.priority}
-          onChange={(e) =>
-            onPersistIfEditing({ ...draft, priority: e.target.value as IssuePriority })
-          }
+          onChange={(e) => onPersistIfEditing({ ...draft, priority: e.target.value as IssuePriority })}
         >
           {(["critical", "high", "medium", "low"] as IssuePriority[]).map((pr) => (
             <option key={pr} value={pr}>
@@ -163,9 +160,7 @@ export function IssueMetadataSidebar({
                   border: selected
                     ? "1px solid var(--accent-indigo)"
                     : "1px solid var(--border-color)",
-                  backgroundColor: selected
-                    ? "var(--accent-indigo)"
-                    : "var(--bg-sidebar)",
+                  backgroundColor: selected ? "var(--accent-indigo)" : "var(--bg-sidebar)",
                   color: selected ? "#ffffff" : "var(--text-secondary)",
                   fontSize: "12px",
                   fontWeight: 700,
@@ -180,7 +175,7 @@ export function IssueMetadataSidebar({
         </div>
       </div>
 
-      {/* Sprint & Epic */}
+      {/* Sprint, FixVersion & Epic */}
       <div>
         <label className="settings-label">{t.sprint}</label>
         <select
@@ -195,6 +190,47 @@ export function IssueMetadataSidebar({
             </option>
           ))}
         </select>
+      </div>
+
+      <div>
+        <label className="settings-label">
+          <Tag size={10} style={{ display: "inline", marginRight: "4px", color: "var(--accent-green)" }} />
+          {t.fixVersion}
+        </label>
+        <select
+          className="settings-select"
+          value={
+            releases.some((r) => r.version === (draft.fixVersion || ""))
+              ? draft.fixVersion || ""
+              : draft.fixVersion
+              ? "__custom__"
+              : ""
+          }
+          onChange={(e) => {
+            const val = e.target.value;
+            if (val === "__custom__") return;
+            onPersistIfEditing({ ...draft, fixVersion: val || undefined });
+          }}
+        >
+          <option value="">{t.noFixVersion}</option>
+          {releases.map((rel) => (
+            <option key={rel.id} value={rel.version}>
+              {rel.version} — {rel.name}
+            </option>
+          ))}
+          {draft.fixVersion && !releases.some((r) => r.version === draft.fixVersion) && (
+            <option value="__custom__">{draft.fixVersion}</option>
+          )}
+        </select>
+        <input
+          type="text"
+          className="settings-input"
+          style={{ marginTop: "5px", fontFamily: "var(--font-mono)", fontSize: "11px" }}
+          placeholder={t.customFixVersionPlaceholder}
+          value={draft.fixVersion || ""}
+          onChange={(e) => onSetDraft({ ...draft, fixVersion: e.target.value || undefined })}
+          onBlur={onPersistDraftOnBlur}
+        />
       </div>
 
       {draft.type !== "epic" && (
@@ -280,9 +316,7 @@ export function IssueMetadataSidebar({
             type="date"
             className="settings-input"
             value={draft.startDate || ""}
-            onChange={(e) =>
-              onPersistIfEditing({ ...draft, startDate: e.target.value || undefined })
-            }
+            onChange={(e) => onPersistIfEditing({ ...draft, startDate: e.target.value || undefined })}
           />
         </div>
         <div>
@@ -294,9 +328,7 @@ export function IssueMetadataSidebar({
             type="date"
             className="settings-input"
             value={draft.endDate || ""}
-            onChange={(e) =>
-              onPersistIfEditing({ ...draft, endDate: e.target.value || undefined })
-            }
+            onChange={(e) => onPersistIfEditing({ ...draft, endDate: e.target.value || undefined })}
           />
         </div>
       </div>

@@ -3,6 +3,11 @@ export type {
   IssueType,
   IssueStatus,
   IssuePriority,
+  ReleaseState,
+  IssueSubtask,
+  IssueAttachment,
+  AgileRelease,
+  ReleaseProgress,
   AgileIssue,
   AgileSprint,
   SprintSeriesPoint,
@@ -27,6 +32,26 @@ export {
   createBlankIssue,
 } from "./issues/issueSerializer";
 export {
+  parseSubtasksSection,
+  serializeSubtasksSection,
+  parseAttachmentsSection,
+  serializeAttachmentsSection,
+  inferMimeTypeFromName,
+  sanitizeAttachmentFileName,
+  cacheAttachmentDataUrl,
+  getCachedAttachmentDataUrl,
+  removeCachedAttachmentDataUrl,
+} from "./issues/subtaskAndAttachmentParser";
+export {
+  RELEASES_FILE_PATH,
+  releaseVersionToSlug,
+  parseReleases,
+  serializeReleasesToMarkdown,
+  getIssuesForRelease,
+  computeReleaseProgress,
+  generateReleaseNotesMarkdown,
+} from "./issues/releaseManager";
+export {
   parseSprints,
   serializeSprintToMarkdown,
   parseCapacityAndVelocity,
@@ -35,5 +60,6 @@ export {
 } from "./issues/sprintSerializer";
 export { extractAllIssues, migrateLegacyBacklogToIssues } from "./issues/legacyMigration";
 export { filterIssuesJql } from "./issues/jqlFilter";
-export { computeSprintMetrics } from "./issues/sprintMetrics";
+export { computeSprintMetrics, computeEffectiveIssueHours } from "./issues/sprintMetrics";
+export type { EffectiveIssueHours } from "./issues/sprintMetrics";
 export { computeGanttBars } from "./issues/ganttMath";

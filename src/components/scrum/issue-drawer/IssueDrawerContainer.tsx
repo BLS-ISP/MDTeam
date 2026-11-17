@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   AgileIssue,
+  AgileRelease,
   AgileSprint,
   suggestBranchName,
 } from "../../../utils/issueEngine";
@@ -10,6 +11,8 @@ import { TEAM_HANDLES, issueDrawerCopy } from "./issueDrawerI18n";
 import { IssueDrawerHeader } from "./IssueDrawerHeader";
 import { IssueDescriptionSection } from "./IssueDescriptionSection";
 import { IssueAcceptanceCriteriaSection } from "./IssueAcceptanceCriteriaSection";
+import { IssueSubtasksAndTimeSection } from "./IssueSubtasksAndTimeSection";
+import { IssueAttachmentsSection } from "./IssueAttachmentsSection";
 import { IssueCommentsSection } from "./IssueCommentsSection";
 import { IssueMetadataSidebar } from "./IssueMetadataSidebar";
 
@@ -19,6 +22,7 @@ export interface IssueDrawerProps {
   isNew?: boolean;
   epics: AgileIssue[];
   sprints: AgileSprint[];
+  releases?: AgileRelease[];
   allIssues?: AgileIssue[];
   currentUser: string;
   language: "de" | "en";
@@ -35,6 +39,7 @@ export function IssueDrawer({
   isNew = false,
   epics,
   sprints,
+  releases = [],
   allIssues = [],
   currentUser,
   language,
@@ -68,9 +73,7 @@ export function IssueDrawer({
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
+      if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -88,10 +91,7 @@ export function IssueDrawer({
   if (!isOpen || !draft) return null;
 
   const persistIfEditing = (next: AgileIssue) => {
-    const stamped = {
-      ...next,
-      updatedAt: new Date().toISOString(),
-    };
+    const stamped = { ...next, updatedAt: new Date().toISOString() };
     setDraft(stamped);
     if (!isNew && stamped.title.trim()) {
       onSave(stamped);
@@ -120,68 +120,66 @@ export function IssueDrawer({
     onSave(stamped);
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 1500);
-    if (isNew) {
-      onClose();
-    }
+    if (isNew) onClose();
   };
 
   const handleAddCriterion = () => {
     const text = newCriterion.trim();
     if (!text) return;
-    const updatedAc = [...draft.acceptanceCriteria, { text, checked: false }];
     setNewCriterion("");
-    persistIfEditing({ ...draft, acceptanceCriteria: updatedAc });
+    persistIfEditing({
+      ...draft,
+      acceptanceCriteria: [...draft.acceptanceCriteria, { text, checked: false }],
+    });
   };
 
   const handleToggleCriterion = (idx: number) => {
-    const updatedAc = draft.acceptanceCriteria.map((item, i) =>
-      i === idx ? { ...item, checked: !item.checked } : item
-    );
-    persistIfEditing({ ...draft, acceptanceCriteria: updatedAc });
+    persistIfEditing({
+      ...draft,
+      acceptanceCriteria: draft.acceptanceCriteria.map((item, i) =>
+        i === idx ? { ...item, checked: !item.checked } : item
+      ),
+    });
   };
 
   const handleUpdateCriterionText = (idx: number, text: string) => {
-    const updatedAc = draft.acceptanceCriteria.map((item, i) =>
-      i === idx ? { ...item, text } : item
-    );
-    setDraft({ ...draft, acceptanceCriteria: updatedAc });
+    setDraft({
+      ...draft,
+      acceptanceCriteria: draft.acceptanceCriteria.map((item, i) =>
+        i === idx ? { ...item, text } : item
+      ),
+    });
   };
 
   const handleDeleteCriterion = (idx: number) => {
-    const updatedAc = draft.acceptanceCriteria.filter((_, i) => i !== idx);
-    persistIfEditing({ ...draft, acceptanceCriteria: updatedAc });
+    persistIfEditing({
+      ...draft,
+      acceptanceCriteria: draft.acceptanceCriteria.filter((_, i) => i !== idx),
+    });
   };
 
   const handleAddLabel = () => {
     const clean = newLabel.trim().toLowerCase().replace(/^#/, "");
-    if (!clean) return;
-    if (!draft.labels.includes(clean)) {
+    if (clean && !draft.labels.includes(clean)) {
       persistIfEditing({ ...draft, labels: [...draft.labels, clean] });
     }
     setNewLabel("");
   };
 
   const handleRemoveLabel = (lbl: string) => {
-    persistIfEditing({
-      ...draft,
-      labels: draft.labels.filter((l) => l !== lbl),
-    });
+    persistIfEditing({ ...draft, labels: draft.labels.filter((l) => l !== lbl) });
   };
 
   const handleAddBlocker = (blockerIdRaw?: string) => {
     const clean = (blockerIdRaw ?? newBlocker).trim().toUpperCase();
-    if (!clean || clean === draft.id.toUpperCase()) return;
-    if (!draft.blockedBy.includes(clean)) {
+    if (clean && clean !== draft.id.toUpperCase() && !draft.blockedBy.includes(clean)) {
       persistIfEditing({ ...draft, blockedBy: [...draft.blockedBy, clean] });
     }
     setNewBlocker("");
   };
 
   const handleRemoveBlocker = (bId: string) => {
-    persistIfEditing({
-      ...draft,
-      blockedBy: draft.blockedBy.filter((b) => b !== bId),
-    });
+    persistIfEditing({ ...draft, blockedBy: draft.blockedBy.filter((b) => b !== bId) });
   };
 
   const handlePostComment = () => {
@@ -198,18 +196,18 @@ export function IssueDrawer({
         ? currentUser
         : `@${currentUser}`
       : "@developer-a";
-
-    const updatedComments = [
-      ...draft.comments,
-      { author: authorHandle, timestamp: ts, text },
-    ];
     setCommentText("");
-    persistIfEditing({ ...draft, comments: updatedComments });
+    persistIfEditing({
+      ...draft,
+      comments: [...draft.comments, { author: authorHandle, timestamp: ts, text }],
+    });
   };
 
   const handleDeleteComment = (idx: number) => {
-    const updatedComments = draft.comments.filter((_, i) => i !== idx);
-    persistIfEditing({ ...draft, comments: updatedComments });
+    persistIfEditing({
+      ...draft,
+      comments: draft.comments.filter((_, i) => i !== idx),
+    });
   };
 
   const handleCreateBranchClick = () => {
@@ -220,9 +218,7 @@ export function IssueDrawer({
       updatedAt: new Date().toISOString(),
     };
     setDraft(updated);
-    if (!isNew && updated.title.trim()) {
-      onSave(updated);
-    }
+    if (!isNew && updated.title.trim()) onSave(updated);
     onCreateBranch?.(updated, suggested);
   };
 
@@ -262,7 +258,7 @@ export function IssueDrawer({
     >
       <div
         style={{
-          width: "min(860px, 96vw)",
+          width: "min(900px, 96vw)",
           height: "100vh",
           backgroundColor: "var(--bg-sidebar)",
           borderLeft: "1px solid var(--border-color)",
@@ -287,16 +283,15 @@ export function IssueDrawer({
           onClose={onClose}
         />
 
-        {/* Drawer Main Split Content */}
         <div
           style={{
             flex: 1,
             display: "grid",
-            gridTemplateColumns: "minmax(0, 1.45fr) minmax(260px, 0.95fr)",
+            gridTemplateColumns: "minmax(0, 1.5fr) minmax(265px, 0.95fr)",
             overflow: "hidden",
           }}
         >
-          {/* Left Column: Title, Description, AC Checklist, Comments */}
+          {/* Left Column: Title, Description, AC, Subtasks & Time, Attachments, Comments */}
           <div
             style={{
               padding: "20px 24px",
@@ -318,9 +313,7 @@ export function IssueDrawer({
                 setTitleError(false);
                 setDraft({ ...draft, title });
               }}
-              onDescriptionChange={(description) =>
-                setDraft({ ...draft, description })
-              }
+              onDescriptionChange={(description) => setDraft({ ...draft, description })}
               onPersistDraftOnBlur={persistDraftOnBlur}
             />
 
@@ -335,6 +328,22 @@ export function IssueDrawer({
               onUpdateCriterionText={handleUpdateCriterionText}
               onPersistDraftOnBlur={persistDraftOnBlur}
               onDeleteCriterion={handleDeleteCriterion}
+            />
+
+            <IssueSubtasksAndTimeSection
+              draft={draft}
+              assigneeOptions={assigneeOptions}
+              currentUser={currentUser}
+              t={t}
+              onPersistIfEditing={persistIfEditing}
+              onSetDraft={setDraft}
+              onPersistDraftOnBlur={persistDraftOnBlur}
+            />
+
+            <IssueAttachmentsSection
+              draft={draft}
+              t={t}
+              onPersistIfEditing={persistIfEditing}
             />
 
             <IssueCommentsSection
@@ -353,6 +362,7 @@ export function IssueDrawer({
             draft={draft}
             epics={epics}
             sprints={sprints}
+            releases={releases}
             assigneeOptions={assigneeOptions}
             candidateBlockers={candidateBlockers}
             currentUser={currentUser}

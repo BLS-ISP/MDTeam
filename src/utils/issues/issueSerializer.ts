@@ -8,6 +8,15 @@ import {
   serializeYamlArray,
 } from "../frontmatter";
 import { DAY_MS, formatUtcDate, parseDateMs } from "./dateHelpers";
+import {
+  parseAttachmentsSection,
+  parseCommentsSection,
+  parseOptionalBoolean,
+  parseOptionalHours,
+  parseSubtasksSection,
+  serializeAttachmentsSection,
+  serializeSubtasksSection,
+} from "./subtaskAndAttachmentParser";
 
 export function normalizeIssueType(raw?: string): IssueType {
   const v = (raw || "").trim().toLowerCase();
@@ -37,89 +46,6 @@ export function normalizeIssuePriority(raw?: string): IssuePriority {
   return "medium";
 }
 
-function parseCommentsSection(lines: string[]): { author: string; timestamp: string; text: string }[] {
-  const comments: { author: string; timestamp: string; text: string }[] = [];
-  let current: { author: string; timestamp: string; text: string } | null = null;
-
-  const flush = () => {
-    if (current && current.text.trim()) {
-      comments.push({
-        author: current.author.trim() || "@user",
-        timestamp: current.timestamp.trim() || new Date().toISOString().slice(0, 16).replace("T", " "),
-        text: current.text.trim(),
-      });
-    }
-    current = null;
-  };
-
-  for (const rawLine of lines) {
-    const trimmed = rawLine.trim();
-    if (!trimmed) {
-      if (current) current.text += "\n";
-      continue;
-    }
-    if (trimmed === "_No comments yet._" || trimmed === "_Noch keine Kommentare._") {
-      continue;
-    }
-
-    // Format 1: - **@author** *(2026-06-01 10:15)*: Text  OR  - **@author** (2026-06-01): Text
-    const bulletBoldMatch = trimmed.match(
-      /^[-*]\s+\*\*(.+?)\*\*\s*(?:\*\((.+?)\)\*|\((.+?)\)|\[(.+?)\])?\s*:\s*(.*)$/
-    );
-    if (bulletBoldMatch) {
-      flush();
-      current = {
-        author: bulletBoldMatch[1],
-        timestamp: bulletBoldMatch[2] || bulletBoldMatch[3] || bulletBoldMatch[4] || "",
-        text: bulletBoldMatch[5] || "",
-      };
-      continue;
-    }
-
-    // Format 2: ### @author - 2026-06-01 10:15  OR  ### @author (2026-06-01)
-    const headingCommentMatch = trimmed.match(
-      /^###\s+(.+?)(?:\s*[-|•]\s*|\s+\()(\d{4}[-./]\d{2}[-./]\d{2}[^)]*)\)?$/
-    );
-    if (headingCommentMatch) {
-      flush();
-      current = {
-        author: headingCommentMatch[1].replace(/\*\*/g, "").trim(),
-        timestamp: headingCommentMatch[2].trim(),
-        text: "",
-      };
-      continue;
-    }
-
-    // Format 3: - [2026-06-01 10:15] @author: Text  OR  - @author (2026-06-01): Text
-    const simpleBulletMatch = trimmed.match(
-      /^[-*]\s+(?:\[([^\]]+)\]\s+)?(@?[a-zA-Z0-9_.-]+)(?:\s*\(([^)]+)\))?\s*:\s*(.+)$/
-    );
-    if (simpleBulletMatch) {
-      flush();
-      current = {
-        author: simpleBulletMatch[2],
-        timestamp: simpleBulletMatch[1] || simpleBulletMatch[3] || "",
-        text: simpleBulletMatch[4],
-      };
-      continue;
-    }
-
-    if (current) {
-      const cleanCont = rawLine.replace(/^\s{2,4}/, "");
-      current.text = current.text ? `${current.text}\n${cleanCont}` : cleanCont;
-    } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-      comments.push({
-        author: "@team",
-        timestamp: "",
-        text: trimmed.slice(2).trim(),
-      });
-    }
-  }
-
-  flush();
-  return comments;
-}
-
 export function parseIssueFromFile(file: WorkspaceFile): AgileIssue | null {
   if (!file || typeof file.content !== "string") return null;
   const cleanPath = normalizePath(file.path);
@@ -142,9 +68,18 @@ export function parseIssueFromFile(file: WorkspaceFile): AgileIssue | null {
   let titleFromH1 = "";
   const descriptionLines: string[] = [];
   const acLines: string[] = [];
+  const subtaskLines: string[] = [];
+  const attachmentLines: string[] = [];
   const commentLines: string[] = [];
 
-  let activeSection: "preamble" | "description" | "ac" | "comments" | "other" = "preamble";
+  let activeSection:
+    | "preamble"
+    | "description"
+    | "ac"
+    | "subtasks"
+    | "attachments"
+    | "comments"
+    | "other" = "preamble";
 
   for (const line of bodyLines) {
     const trimmed = line.trim();
@@ -172,6 +107,20 @@ export function parseIssueFromFile(file: WorkspaceFile): AgileIssue | null {
       ) {
         activeSection = "description";
       } else if (
+        heading.includes("subtask") ||
+        heading.includes("sub-task") ||
+        heading.includes("unteraufgabe") ||
+        heading.includes("teilaufgabe")
+      ) {
+        activeSection = "subtasks";
+      } else if (
+        heading.includes("attachment") ||
+        heading.includes("anhang") ||
+        heading.includes("anhänge") ||
+        heading.includes("dateien")
+      ) {
+        activeSection = "attachments";
+      } else if (
         heading.includes("acceptance") ||
         heading.includes("akzeptanz") ||
         heading.includes("criteria") ||
@@ -195,6 +144,10 @@ export function parseIssueFromFile(file: WorkspaceFile): AgileIssue | null {
       descriptionLines.push(line);
     } else if (activeSection === "ac") {
       acLines.push(line);
+    } else if (activeSection === "subtasks") {
+      subtaskLines.push(line);
+    } else if (activeSection === "attachments") {
+      attachmentLines.push(line);
     } else if (activeSection === "comments") {
       commentLines.push(line);
     }
@@ -223,10 +176,7 @@ export function parseIssueFromFile(file: WorkspaceFile): AgileIssue | null {
   const parsedSp = Number(rawSp);
   const storyPoints = Number.isFinite(parsedSp) && parsedSp >= 0 ? parsedSp : 0;
 
-  const labels =
-    arrays.labels ??
-    (scalars.labels ? parseYamlArray(scalars.labels) : []);
-
+  const labels = arrays.labels ?? (scalars.labels ? parseYamlArray(scalars.labels) : []);
   const blockedBy =
     arrays.blocked_by ??
     arrays.blockedby ??
@@ -238,6 +188,14 @@ export function parseIssueFromFile(file: WorkspaceFile): AgileIssue | null {
 
   const startDate = (scalars.start_date || scalars.startdate || "").trim() || undefined;
   const endDate = (scalars.end_date || scalars.enddate || "").trim() || undefined;
+  const fixVersion = (scalars.fix_version || scalars.fixversion || "").trim() || undefined;
+  const estimatedHours = parseOptionalHours(scalars.estimated_hours ?? scalars.estimatedhours);
+  const loggedHours = parseOptionalHours(scalars.logged_hours ?? scalars.loggedhours);
+  const remainingHours = parseOptionalHours(scalars.remaining_hours ?? scalars.remaininghours);
+  const reviewAccepted = parseOptionalBoolean(scalars.review_accepted ?? scalars.reviewaccepted);
+
+  const subtasks = parseSubtasksSection(subtaskLines);
+  const attachments = parseAttachmentsSection(attachmentLines, updatedAt);
 
   const cleanDescription = descriptionLines.join("\n").trim();
 
@@ -267,6 +225,13 @@ export function parseIssueFromFile(file: WorkspaceFile): AgileIssue | null {
     startDate,
     endDate,
     filePath: cleanPath || `issues/${id}.md`,
+    subtasks,
+    attachments,
+    ...(fixVersion ? { fixVersion } : {}),
+    ...(estimatedHours !== undefined ? { estimatedHours } : {}),
+    ...(loggedHours !== undefined ? { loggedHours } : {}),
+    ...(remainingHours !== undefined ? { remainingHours } : {}),
+    ...(reviewAccepted !== undefined ? { reviewAccepted } : {}),
   };
 }
 
@@ -299,10 +264,27 @@ export function serializeIssueToMarkdown(issue: AgileIssue): WorkspaceFile {
     `branch: ${escapeYamlString(issue.branch || "")}`,
     `start_date: ${escapeYamlString(issue.startDate || "")}`,
     `end_date: ${escapeYamlString(issue.endDate || "")}`,
-    `created_at: ${escapeYamlString(createdAt)}`,
-    `updated_at: ${escapeYamlString(updatedAt)}`,
-    "---",
   ];
+
+  if (issue.fixVersion !== undefined && issue.fixVersion.trim() !== "") {
+    frontmatterLines.push(`fix_version: ${escapeYamlString(issue.fixVersion.trim())}`);
+  }
+  if (issue.estimatedHours !== undefined && Number.isFinite(issue.estimatedHours)) {
+    frontmatterLines.push(`estimated_hours: ${Number(issue.estimatedHours.toFixed(2))}`);
+  }
+  if (issue.loggedHours !== undefined && Number.isFinite(issue.loggedHours)) {
+    frontmatterLines.push(`logged_hours: ${Number(issue.loggedHours.toFixed(2))}`);
+  }
+  if (issue.remainingHours !== undefined && Number.isFinite(issue.remainingHours)) {
+    frontmatterLines.push(`remaining_hours: ${Number(issue.remainingHours.toFixed(2))}`);
+  }
+  if (issue.reviewAccepted !== undefined) {
+    frontmatterLines.push(`review_accepted: ${issue.reviewAccepted}`);
+  }
+
+  frontmatterLines.push(`created_at: ${escapeYamlString(createdAt)}`);
+  frontmatterLines.push(`updated_at: ${escapeYamlString(updatedAt)}`);
+  frontmatterLines.push("---");
 
   const acBody =
     issue.acceptanceCriteria && issue.acceptanceCriteria.length > 0
@@ -310,6 +292,9 @@ export function serializeIssueToMarkdown(issue: AgileIssue): WorkspaceFile {
           .map((ac) => `- [${ac.checked ? "x" : " "}] ${ac.text.replace(/\r?\n/g, " ").trim()}`)
           .join("\n")
       : "- [ ] Define acceptance criteria";
+
+  const subtasksBody = serializeSubtasksSection(issue.subtasks);
+  const attachmentsBody = serializeAttachmentsSection(issue.attachments);
 
   const commentsBody =
     issue.comments && issue.comments.length > 0
@@ -333,11 +318,16 @@ export function serializeIssueToMarkdown(issue: AgileIssue): WorkspaceFile {
     "## Acceptance Criteria",
     "",
     acBody,
-    "",
-    "## Comments",
-    "",
-    commentsBody,
   ];
+
+  if (subtasksBody) {
+    mdSections.push("", "## Subtasks", "", subtasksBody);
+  }
+  if (attachmentsBody) {
+    mdSections.push("", "## Attachments", "", attachmentsBody);
+  }
+
+  mdSections.push("", "## Comments", "", commentsBody);
 
   return {
     path: filePath,
@@ -377,19 +367,10 @@ export function generateNextIssueId(files: WorkspaceFile[], prefix: string = "MD
 
 export function suggestBranchName(issue: AgileIssue): string {
   const prefix =
-    issue.type === "bug"
-      ? "fix"
-      : issue.type === "task"
-      ? "chore"
-      : issue.type === "spike"
-      ? "spike"
-      : "feat";
+    issue.type === "bug" ? "fix" : issue.type === "task" ? "chore" : issue.type === "spike" ? "spike" : "feat";
   const slug = (issue.title || "work")
     .toLowerCase()
-    .replace(/ä/g, "ae")
-    .replace(/ö/g, "oe")
-    .replace(/ü/g, "ue")
-    .replace(/ß/g, "ss")
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 36)
@@ -430,5 +411,12 @@ export function createBlankIssue(
     startDate: defaults?.startDate || today,
     endDate: defaults?.endDate || formatUtcDate((parseDateMs(today) || Date.now()) + 7 * DAY_MS),
     filePath: `issues/${nextId}.md`,
+    subtasks: defaults?.subtasks || [],
+    attachments: defaults?.attachments || [],
+    ...(defaults?.fixVersion ? { fixVersion: defaults.fixVersion } : {}),
+    ...(defaults?.estimatedHours !== undefined ? { estimatedHours: defaults.estimatedHours } : {}),
+    ...(defaults?.loggedHours !== undefined ? { loggedHours: defaults.loggedHours } : {}),
+    ...(defaults?.remainingHours !== undefined ? { remainingHours: defaults.remainingHours } : {}),
+    ...(defaults?.reviewAccepted !== undefined ? { reviewAccepted: defaults.reviewAccepted } : {}),
   };
 }

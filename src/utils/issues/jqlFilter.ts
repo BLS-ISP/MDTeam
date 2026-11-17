@@ -37,7 +37,6 @@ export function filterIssuesJql(
   const trimmed = (query || "").trim();
   if (!trimmed) return issues;
 
-  // Normalize classic JQL operators like "status != done" or "type = bug" into compact tokens
   const normalizedQuery = trimmed
     .replace(/\s*!=\s*/g, ":!")
     .replace(/\s*=\s*/g, ":");
@@ -45,10 +44,12 @@ export function filterIssuesJql(
   const rawTokens = tokenizeQuery(normalizedQuery);
   const meNorm = normalizeHandle(currentUser || "@developer-a");
 
-  // Detect active sprint heuristic from issues if "sprint:active" is used
   const sprintCounts: Record<string, number> = {};
   issues.forEach((iss) => {
-    if (iss.sprint) sprintCounts[iss.sprint.toLowerCase()] = (sprintCounts[iss.sprint.toLowerCase()] || 0) + 1;
+    if (iss.sprint) {
+      sprintCounts[iss.sprint.toLowerCase()] =
+        (sprintCounts[iss.sprint.toLowerCase()] || 0) + 1;
+    }
   });
   const inferredActiveSprint = Object.keys(sprintCounts).sort()[0] || "sprint-01";
 
@@ -97,7 +98,10 @@ export function filterIssuesJql(
               return !issue.sprint;
             }
             if (v === "active" || v === "current") {
-              return Boolean(issue.sprint) && (issue.sprint.toLowerCase() === inferredActiveSprint || Boolean(issue.sprint));
+              return (
+                Boolean(issue.sprint) &&
+                (issue.sprint.toLowerCase() === inferredActiveSprint || Boolean(issue.sprint))
+              );
             }
             return issue.sprint.toLowerCase() === v;
           });
@@ -105,6 +109,18 @@ export function filterIssuesJql(
           matched = vals.some((v) => {
             if (v === "none" || v === "empty") return !issue.epic;
             return issue.epic.toLowerCase() === v;
+          });
+        } else if (
+          key === "fixversion" ||
+          key === "fix_version" ||
+          key === "version" ||
+          key === "release"
+        ) {
+          matched = vals.some((v) => {
+            if (v === "none" || v === "empty" || v === "unassigned") {
+              return !issue.fixVersion;
+            }
+            return (issue.fixVersion || "").toLowerCase() === v;
           });
         } else if (key === "assignee" || key === "owner") {
           matched = vals.some((v) => {
@@ -137,12 +153,22 @@ export function filterIssuesJql(
             if (v === "unassigned") return !issue.assignee || issue.assignee.toLowerCase() === "unassigned";
             if (v === "unestimated") return !issue.storyPoints || issue.storyPoints === 0;
             if (v === "branch") return Boolean(issue.branch);
+            if (v === "subtasks" || v === "subtask") return (issue.subtasks?.length ?? 0) > 0;
+            if (v === "attachments" || v === "attachment") return (issue.attachments?.length ?? 0) > 0;
+            if (v === "hours" || v === "estimate") {
+              return (
+                issue.estimatedHours !== undefined ||
+                issue.remainingHours !== undefined ||
+                issue.loggedHours !== undefined
+              );
+            }
             return false;
           });
         } else if (key === "id" || key === "key") {
-          matched = vals.some((v) => issue.id.toLowerCase() === v || issue.id.toLowerCase().includes(v));
+          matched = vals.some(
+            (v) => issue.id.toLowerCase() === v || issue.id.toLowerCase().includes(v)
+          );
         } else {
-          // Unknown prefix: fallback to full-text search
           const needle = token.toLowerCase();
           matched =
             issue.id.toLowerCase().includes(needle) ||
@@ -161,6 +187,8 @@ export function filterIssuesJql(
           issue.description.toLowerCase().includes(needle) ||
           issue.assignee.toLowerCase().includes(needle) ||
           issue.epic.toLowerCase().includes(needle) ||
+          (issue.fixVersion || "").toLowerCase().includes(needle) ||
+          (issue.subtasks || []).some((s) => s.title.toLowerCase().includes(needle)) ||
           issue.labels.some((l) => l.toLowerCase().includes(needle));
 
         if (negated ? textMatch : !textMatch) return false;
