@@ -3,6 +3,22 @@
 All notable changes to **MDTeam Workspace** are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-11-17
+
+### Added
+- **Per-Project FIFO Re-Entrant Git Mutex (`server/src/git/gitMutex.ts`):** Serializes concurrent Git mutations per normalized `projectId` in strict FIFO order while `AsyncLocalStorage` guarantees deadlock-free re-entrancy across nested repository calls (`ensureProjectRepository`, `commitWorkingProjectChanges` -> `syncProjectGitRemote`, `cloneRemoteProjectRepository` -> `listProjectFilesAndAssets`).
+- **1-Click Pre-Clone SSH Deploy Key Generation & Safe Code Endpoint (`server/src/git/`, `src/components/git/`):** Added `POST /api/projects/git/ssh-key-preview`, pre-clone `sshPrivateKey` support in `POST /api/projects/git/test`, and `sshPublicKey` persistence in `POST /api/projects/clone` so teams can generate and test Ed25519 SSH Deploy Keys before cloning, alongside `GET /api/projects/:id/code` for safe read-only code inspection (`<= 512 KB`, whitelisted text extensions, `.env*`/secret/key/symlink blocking).
+- **Server HEAD Diff & Shared Branch Guidance (`src/components/layout/WorkspaceModalsHost.tsx`, `src/components/modals/GitBranchModal.tsx`):** `DiffViewer` in online server mode now loads committed `HEAD` file contents via `/git/file-at-commit`, and `GitBranchModal` surfaces an informational notice when switching branches on shared team projects.
+
+### Changed
+- **Draft Auto-Save Without Commit Spam (`server/src/git/serverGitBridge.ts`, `src/hooks/useWorkspaceServerBridge.ts`):** `PUT/POST /api/projects/:id/files` now supports `autoCommit: false` so debounced editor auto-saves persist working-tree drafts to disk (`{ committed: false, commitSha }`) without creating intermediate Git commits on every keystroke pause.
+- **Collision-Free Yjs Room Isolation & Real Awareness (`src/hooks/useYjsCollaboration.ts`, `src/context/WorkspaceContext.tsx`):** Upgraded Yjs room naming to injective `buildYjsRoomName(projectId, branch, filePath)` isolation, replaced simulated collaborator cursors with live `provider.awareness` peer state, gated WebSocket connections behind `canConnectWs`, and enforced `readOnly` collaboration for `stakeholder` accounts.
+
+### Security
+- **Markdown Stored-XSS, Mermaid & Draw.io Embed Hardening (`src/utils/workspace/markdownSecurity.ts`, `markdownInlineAndMermaid.tsx`, `markdownRenderer.tsx`):** Escapes HTML entities prior to inline Markdown formatting, enforces Mermaid `securityLevel: "strict"`, blocks `javascript:`, `vbscript:`, `file:`, percent-encoded scheme bypasses, `data:text/html`, and `data:image/svg+xml` URLs, and restricts both inline and fenced `drawio` iframes to official HTTPS `diagrams.net`/`draw.io` hosts with `sandbox="allow-scripts allow-same-origin"` and `referrerPolicy="no-referrer"`.
+- **CORS Allowlist, Sliding-Window Login Rate Limiter & WebSocket Auth Gate (`server/src/httpHelpers.ts`, `loginRateLimiter.ts`, `index.ts`, `nginx.conf`):** Prevents arbitrary `Origin` or `*` reflection with `Access-Control-Allow-Credentials: true` (permitting only explicit `MDTEAM_CORS_ORIGINS`, same-origin `Host`, or non-production localhost), enforces a 15-minute sliding-window login rate limiter (`10` failures per IP+user, `30` per IP with trusted-proxy hop parsing and `429 Retry-After`), and gates Nginx `/ws` upgrades via `auth_request /_auth_ws` (`GET /api/auth/ws-verify`).
+- **DNS-Rebinding SSRF Guards, Cookie-First Session Hygiene & CSPRNG NS8 Provisioning (`ssrfDnsGuard.ts`, `webhookDispatcher.ts`, `gitSanitizer.ts`, `useServerBackend.ts`, `ns8/`):** Resolves and validates `dns.promises.lookup(host, { all: true })` addresses on outgoing webhooks (`redirect: "error"`) and Git remotes to block loopback, `0.0.0.0/8`, link-local metadata (`169.254.0.0/16`, `fe80::/10`), `accountprovider`, and IPv4-mapped IPv6 rebinding while preserving RFC1918 LAN support; eliminates `localStorage` JWT storage on same-origin `HttpOnly` cookie deployments; and provisions NS8 `MDTEAM_INITIAL_PASSWORD` via `secrets.token_urlsafe(18)`.
+
 ## [1.2.0] - 2026-11-17
 
 ### Added

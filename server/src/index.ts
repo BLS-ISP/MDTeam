@@ -83,7 +83,7 @@ async function routeApiRequest(
     sendJson(res, 200, {
       status: "ok",
       service: "mdteam-api",
-      version: "1.2.0",
+      version: "1.3.0",
       oidcEnabled: Boolean(oidc.enabled && oidc.clientId),
       oidcProvider: oidc.provider,
       ldapEnabled: isLdapEnabled(),

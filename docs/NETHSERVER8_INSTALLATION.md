@@ -1,6 +1,6 @@
 # MDTeam Workspace — NethServer 8 Installation & Administration Guide (EN / DE)
 
-Practical cluster administrator reference for installing, configuring, backing up, and updating **MDTeam Workspace** as a rootless **NethServer 8 (NS8)** module (`ghcr.io/bls-isp/mdteam:1.2.0`).
+Practical cluster administrator reference for installing, configuring, backing up, and updating **MDTeam Workspace** as a rootless **NethServer 8 (NS8)** module (`ghcr.io/bls-isp/mdteam:1.3.0`).
 
 * [1. English Administrator Guide](#1-english-administrator-guide)
 * [2. Deutsches Administrationshandbuch](#2-deutsches-administrationshandbuch)
@@ -13,9 +13,9 @@ Practical cluster administrator reference for installing, configuring, backing u
 
 MDTeam Workspace runs as an isolated, rootless Podman pod inside NethServer 8 using strict SemVer container tags (never `:latest`) and zero external database dependencies:
 
-* **`mdteam-web`** (`ghcr.io/bls-isp/mdteam/workspace-web:1.2.0`) — Next.js UI & Nginx gateway bound strictly to `127.0.0.1:${TCP_PORT}` behind NS8's node **Traefik** reverse proxy (`/` HTTP/HTTPS + `/ws` Yjs WebSocket upgrade).
-* **`mdteam-api`** (`ghcr.io/bls-isp/mdteam/api-server:1.2.0`) — Node 20 Git-Bridge, RBAC, OIDC, and native RFC 4511 LDAPv3 client storing repositories and metadata on the persistent `mdteam-data` volume.
-* **`mdteam-yjs`** (`ghcr.io/bls-isp/mdteam/yjs-server:1.2.0`) — Real-time CRDT multi-cursor & Planning Poker collaboration server.
+* **`mdteam-web`** (`ghcr.io/bls-isp/mdteam/workspace-web:1.3.0`) — Next.js UI & Nginx gateway bound strictly to `127.0.0.1:${TCP_PORT}` behind NS8's node **Traefik** reverse proxy (`/` HTTP/HTTPS + `/ws` Yjs WebSocket upgrade).
+* **`mdteam-api`** (`ghcr.io/bls-isp/mdteam/api-server:1.3.0`) — Node 20 Git-Bridge, RBAC, OIDC, and native RFC 4511 LDAPv3 client storing repositories and metadata on the persistent `mdteam-data` volume.
+* **`mdteam-yjs`** (`ghcr.io/bls-isp/mdteam/yjs-server:1.3.0`) — Real-time CRDT multi-cursor & Planning Poker collaboration server.
 
 **Prerequisites:**
 1. A running **NethServer 8** cluster node (`core >= 3.0.0`) with a DNS `A` / `AAAA` record pointing your chosen FQDN (e.g. `mdteam.example.org`) to the NS8 node.
@@ -37,7 +37,7 @@ MDTeam Workspace runs as an isolated, rootless Podman pod inside NethServer 8 us
 Connect to your NethServer 8 leader node via SSH as `root` and install the explicit SemVer tag on node `1`:
 
 ```bash
-add-module ghcr.io/bls-isp/mdteam:1.2.0 1
+add-module ghcr.io/bls-isp/mdteam:1.3.0 1
 ```
 
 ### 1.3 Initial Configuration in NS8 Cluster-Admin
@@ -74,7 +74,7 @@ During LDAP / Active Directory login, MDTeam authenticates the user via an LDAP 
 * **Software Center Updates:** Once the `bls-isp` repository URL is registered, new SemVer releases in `ns8-repo/repodata.json` appear directly under **Software center → Updates**.
 * **CLI Update:**
   ```bash
-  api-cli run update-module --data '{"module_url":"ghcr.io/bls-isp/mdteam:1.2.0","instances":["mdteam1"]}'
+  api-cli run update-module --data '{"module_url":"ghcr.io/bls-isp/mdteam:1.3.0","instances":["mdteam1"]}'
   ```
 
 ---
@@ -85,9 +85,9 @@ During LDAP / Active Directory login, MDTeam authenticates the user via an LDAP 
 
 **MDTeam Workspace** läuft unter **NethServer 8 (NS8)** als vollständig isolierter, rootless Podman-Pod mit strikten SemVer-Image-Tags (ohne `:latest`) und ohne externe Datenbankabhängigkeit:
 
-* **`mdteam-web`** (`ghcr.io/bls-isp/mdteam/workspace-web:1.2.0`) — Next.js-Oberfläche & Nginx-Reverse-Proxy, strikt gebunden an `127.0.0.1:${TCP_PORT}` hinter dem NS8-**Traefik**-Proxy (inklusive `/ws` Echtzeit-WebSockets).
-* **`mdteam-api`** (`ghcr.io/bls-isp/mdteam/api-server:1.2.0`) — Node-20-Git-Bridge-, RBAC-, OIDC- und nativer LDAPv3-Server mit persistentem Datenvolume `mdteam-data`.
-* **`mdteam-yjs`** (`ghcr.io/bls-isp/mdteam/yjs-server:1.2.0`) — Echtzeit-CRDT-Server für simultanes Editieren und Planning Poker.
+* **`mdteam-web`** (`ghcr.io/bls-isp/mdteam/workspace-web:1.3.0`) — Next.js-Oberfläche & Nginx-Reverse-Proxy, strikt gebunden an `127.0.0.1:${TCP_PORT}` hinter dem NS8-**Traefik**-Proxy (inklusive `/ws` Echtzeit-WebSockets).
+* **`mdteam-api`** (`ghcr.io/bls-isp/mdteam/api-server:1.3.0`) — Node-20-Git-Bridge-, RBAC-, OIDC- und nativer LDAPv3-Server mit persistentem Datenvolume `mdteam-data`.
+* **`mdteam-yjs`** (`ghcr.io/bls-isp/mdteam/yjs-server:1.3.0`) — Echtzeit-CRDT-Server für simultanes Editieren und Planning Poker.
 
 **Voraussetzungen:**
 1. Ein betriebsbereiter **NethServer 8**-Clusterknoten (`core >= 3.0.0`) sowie ein DNS-Eintrag (`A` / `AAAA`), der den gewünschten Hostnamen (z. B. `mdteam.example.org`) auf den NS8-Knoten verweist.
@@ -109,7 +109,7 @@ During LDAP / Active Directory login, MDTeam authenticates the user via an LDAP 
 Alternativ per SSH als `root` auf dem Leader-Knoten mit explizitem SemVer-Tag:
 
 ```bash
-add-module ghcr.io/bls-isp/mdteam:1.2.0 1
+add-module ghcr.io/bls-isp/mdteam:1.3.0 1
 ```
 
 ### 2.3 Erstkonfiguration im NS8 Cluster-Admin
@@ -144,5 +144,5 @@ Bei jeder Anmeldung eines Domänenbenutzers prüft MDTeam dessen Gruppenzugehör
 * **Updates über Software Center oder CLI:** Mit hinterlegtem Software-Repository erscheinen neue SemVer-Releases automatisch im **Software Center** unter **Updates**. Alternativ per CLI:
 
 ```bash
-api-cli run update-module --data '{"module_url":"ghcr.io/bls-isp/mdteam:1.2.0","instances":["mdteam1"]}'
+api-cli run update-module --data '{"module_url":"ghcr.io/bls-isp/mdteam:1.3.0","instances":["mdteam1"]}'
 ```

@@ -107,7 +107,7 @@ Install **MDTeam Workspace** onto any **NethServer 8 (NS8)** cluster node as an 
 
 ### Option B: One-Command SSH Installation (Strict SemVer)
 ```bash
-add-module ghcr.io/bls-isp/mdteam:1.2.0 1
+add-module ghcr.io/bls-isp/mdteam:1.3.0 1
 ```
 
 1. In **NS8 Cluster-Admin** (`https://<ns8-host>/cluster-admin`), open **Applications** → **MDTeam Workspace (`mdteam1`)** → **Settings**.
@@ -119,10 +119,10 @@ add-module ghcr.io/bls-isp/mdteam:1.2.0 1
 ## 🐳 Production Docker Deployment (Prebuilt GHCR Images — Strict SemVer)
 
 Every release publishes four SemVer-tagged OCI images to GitHub Container Registry (never `:latest`):
-* `ghcr.io/bls-isp/mdteam:1.2.0` — Rootless NethServer 8 module (`imageroot` + Cluster-Admin Cockpit UI)
-* `ghcr.io/bls-isp/mdteam/workspace-web:1.2.0` — Next.js UI + Nginx reverse proxy (`/` UI, `/api/*` → API, `/ws` → Yjs)
-* `ghcr.io/bls-isp/mdteam/api-server:1.2.0` — Zero-dependency Node 20 Auth, RBAC, Git-Bridge & Webhook server
-* `ghcr.io/bls-isp/mdteam/yjs-server:1.2.0` — Real-time CRDT collaboration & Planning Poker server
+* `ghcr.io/bls-isp/mdteam:1.3.0` — Rootless NethServer 8 module (`imageroot` + Cluster-Admin Cockpit UI)
+* `ghcr.io/bls-isp/mdteam/workspace-web:1.3.0` — Next.js UI + Nginx reverse proxy (`/` UI, `/api/*` → API, `/ws` → Yjs)
+* `ghcr.io/bls-isp/mdteam/api-server:1.3.0` — Zero-dependency Node 20 Auth, RBAC, Git-Bridge & Webhook server
+* `ghcr.io/bls-isp/mdteam/yjs-server:1.3.0` — Real-time CRDT collaboration & Planning Poker server
 
 ### Quick Start with Prebuilt Images
 Create a `docker-compose.prod.yml` (or run `docker compose up -d --build` from a cloned repo):
@@ -130,7 +130,7 @@ Create a `docker-compose.prod.yml` (or run `docker compose up -d --build` from a
 ```yaml
 services:
   workspace-web:
-    image: ghcr.io/bls-isp/mdteam/workspace-web:1.2.0
+    image: ghcr.io/bls-isp/mdteam/workspace-web:1.3.0
     ports:
       - "80:80"
     restart: always
@@ -139,7 +139,7 @@ services:
       - yjs-server
 
   api-server:
-    image: ghcr.io/bls-isp/mdteam/api-server:1.2.0
+    image: ghcr.io/bls-isp/mdteam/api-server:1.3.0
     restart: always
     environment:
       - NODE_ENV=production
@@ -152,7 +152,7 @@ services:
       - mdteam-data:/data
 
   yjs-server:
-    image: ghcr.io/bls-isp/mdteam/yjs-server:1.2.0
+    image: ghcr.io/bls-isp/mdteam/yjs-server:1.3.0
     ports:
       - "1234:1234"
     restart: always
