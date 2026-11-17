@@ -5,6 +5,8 @@ on:
     branches:
       - main
       - master
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 env:
@@ -36,6 +38,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/workspace-web
           tags: |
             type=raw,value=latest
+            type=semver,pattern={{version}}
             type=sha,format=short
 
       - name: Build and push Web Client Docker image
@@ -55,6 +58,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/api-server
           tags: |
             type=raw,value=latest
+            type=semver,pattern={{version}}
             type=sha,format=short
 
       - name: Build and push API Server Docker image
@@ -74,6 +78,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/yjs-server
           tags: |
             type=raw,value=latest
+            type=semver,pattern={{version}}
             type=sha,format=short
 
       - name: Build and push Yjs Server Docker image
