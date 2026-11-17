@@ -45,6 +45,7 @@ export function useServerGitApi({
       authType?: GitAuthType;
       httpsUsername?: string;
       httpsToken?: string;
+      sshPrivateKey?: string;
     }) => {
       return apiFetch<{
         ok: boolean;

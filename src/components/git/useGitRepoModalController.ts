@@ -116,6 +116,7 @@ export function useGitRepoModalController() {
         authType,
         httpsUsername,
         httpsToken: httpsToken || undefined,
+        sshPrivateKey: sshPrivateKeyInput.trim() || undefined,
       });
       setDiscoveredBranches(res.branches);
       if (!branch && res.defaultBranch) setBranch(res.defaultBranch);
