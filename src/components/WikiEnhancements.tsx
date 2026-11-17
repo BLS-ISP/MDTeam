@@ -23,6 +23,8 @@ export {
 } from "./wiki/wikiStorageUtils";
 
 export { PageGovernanceBar } from "./wiki/PageGovernanceBar";
+export { ApprovalLockBanner } from "./wiki/ApprovalLockBanner";
+export type { ApprovalLockBannerProps } from "./wiki/ApprovalLockBanner";
 export { InlineCommentsDrawer } from "./wiki/InlineCommentsDrawer";
 export { WIKI_TEMPLATES } from "../constants/wikiTemplates";
 export { TemplateGalleryModal } from "./wiki/TemplateGalleryModal";
