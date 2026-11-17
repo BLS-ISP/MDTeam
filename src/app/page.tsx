@@ -13,6 +13,11 @@ import ScrumWorkspace from "../components/ScrumWorkspace";
 import IssueDrawer from "../components/IssueDrawer";
 import {
   AgileIssue,
+  IssueType,
+  IssueStatus,
+  IssuePriority,
+  FIBONACCI_POINTS,
+  parseIssueFromFile,
   extractAllIssues,
   parseSprints,
   createBlankIssue,
@@ -986,6 +991,8 @@ export default function Workspace() {
   const [isPageHistoryOpen, setIsPageHistoryOpen] = useState<boolean>(false);
   const [isTemplateGalleryOpen, setIsTemplateGalleryOpen] = useState<boolean>(false);
   const [isQuickCreateIssueOpen, setIsQuickCreateIssueOpen] = useState<boolean>(false);
+  const [quickCreateDraft, setQuickCreateDraft] = useState<AgileIssue | null>(null);
+  const [isQuickDrawerNew, setIsQuickDrawerNew] = useState<boolean>(true);
 
   const [isTauri, setIsTauri] = useState<boolean>(false);
   const [tauriRootFolder, setTauriRootFolder] = useState<string>("");
@@ -2139,6 +2146,23 @@ export default function Workspace() {
     setPendingBranchIssue(updatedIssue);
     setPendingBranchName(suggestedBranchName);
     setIsGitBranchModalOpen(true);
+  };
+
+  const openQuickCreateIssue = () => {
+    const sprintsNow = parseSprints(filesRef.current);
+    const activeSprintNow = sprintsNow.find(s => s.state === "active");
+    const draft = createBlankIssue(filesRef.current, currentUser, {
+      sprint: activeSprintNow?.id || "",
+    });
+    setIsQuickDrawerNew(true);
+    setQuickCreateDraft(draft);
+    setIsQuickCreateIssueOpen(true);
+  };
+
+  const openExistingIssueInDrawer = (issue: AgileIssue) => {
+    setIsQuickDrawerNew(false);
+    setQuickCreateDraft(issue);
+    setIsQuickCreateIssueOpen(true);
   };
 
   // Handle auto-completion styled block insertion
@@ -4269,20 +4293,94 @@ export default function Workspace() {
   };
 
   interface GenericBlock {
-    type: 'h1' | 'h2' | 'h3' | 'paragraph' | 'list';
+    type: 'h1' | 'h2' | 'h3' | 'paragraph' | 'list' | 'code' | 'yaml';
     content: string;
+    codeLang?: string;
     listType?: 'unordered' | 'ordered' | 'todo';
     listItems?: { checked: boolean; text: string }[];
   }
 
-  const parseGenericMarkdown = (content: string): GenericBlock[] => {
-    const lines = content.split("\n");
+  const parseGenericMarkdown = (rawContent: string): { frontmatterPrefix: string; blocks: GenericBlock[] } => {
+    // Preserve any leading YAML frontmatter (`--- ... ---`) verbatim so Visual Form edits never strip metadata
+    let frontmatterPrefix = "";
+    let bodyContent = rawContent;
+    const fmMatch = rawContent.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/);
+    if (fmMatch) {
+      frontmatterPrefix = fmMatch[0];
+      bodyContent = rawContent.slice(fmMatch[0].length);
+    }
+
+    const lines = bodyContent.split("\n");
     const blocks: GenericBlock[] = [];
     let currentBlock: GenericBlock | null = null;
+    let inFencedCode = false;
+    let currentCodeLang = "";
+    let codeLines: string[] = [];
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const trimmed = line.trim();
+
+      // Fenced code blocks (e.g. ```query, ```mermaid, ```drawio, ```ts)
+      if (trimmed.startsWith("```")) {
+        if (inFencedCode) {
+          inFencedCode = false;
+          blocks.push({
+            type: 'code',
+            codeLang: currentCodeLang,
+            content: codeLines.join("\n"),
+          });
+          currentCodeLang = "";
+          codeLines = [];
+        } else {
+          if (currentBlock) {
+            blocks.push(currentBlock);
+            currentBlock = null;
+          }
+          inFencedCode = true;
+          currentCodeLang = trimmed.slice(3).trim();
+          codeLines = [];
+        }
+        continue;
+      }
+
+      if (inFencedCode) {
+        codeLines.push(line);
+        continue;
+      }
+
+      // Mid-document YAML frontmatter block (e.g. ADR metadata right below H1)
+      if (trimmed === "---") {
+        let closingIdx = -1;
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j].trim() === "---") {
+            closingIdx = j;
+            break;
+          }
+        }
+        if (closingIdx !== -1) {
+          let looksLikeYaml = true;
+          for (let j = i + 1; j < closingIdx; j++) {
+            const m = lines[j].trim();
+            if (m !== "" && !m.includes(":") && !m.startsWith("-")) {
+              looksLikeYaml = false;
+              break;
+            }
+          }
+          if (looksLikeYaml) {
+            if (currentBlock) {
+              blocks.push(currentBlock);
+              currentBlock = null;
+            }
+            blocks.push({
+              type: 'yaml',
+              content: lines.slice(i + 1, closingIdx).join("\n"),
+            });
+            i = closingIdx;
+            continue;
+          }
+        }
+      }
 
       if (trimmed === "") {
         if (currentBlock && currentBlock.type === 'paragraph') {
@@ -4364,76 +4462,102 @@ export default function Workspace() {
 
       // Standard text / paragraph
       if (!currentBlock) {
-        currentBlock = { type: 'paragraph', content: trimmed };
+        currentBlock = { type: 'paragraph', content: line.replace(/\r$/, "") };
       } else if (currentBlock.type === 'paragraph') {
-        currentBlock.content += "\n" + trimmed;
+        currentBlock.content += "\n" + line.replace(/\r$/, "");
       } else {
         blocks.push(currentBlock);
-        currentBlock = { type: 'paragraph', content: trimmed };
+        currentBlock = { type: 'paragraph', content: line.replace(/\r$/, "") };
       }
     }
 
-    if (currentBlock) {
+    if (inFencedCode) {
+      blocks.push({
+        type: 'code',
+        codeLang: currentCodeLang,
+        content: codeLines.join("\n"),
+      });
+    } else if (currentBlock) {
       blocks.push(currentBlock);
     }
 
-    return blocks;
+    return { frontmatterPrefix, blocks };
   };
 
-  const saveGenericMarkdown = (filePath: string, blocks: GenericBlock[]) => {
-    let content = "";
-    blocks.forEach((block, idx) => {
+  const saveGenericMarkdown = (filePath: string, frontmatterPrefix: string, blocks: GenericBlock[]) => {
+    let bodyOut = "";
+    blocks.forEach((block) => {
       if (block.type === 'h1') {
-        content += `# ${block.content}\n\n`;
+        bodyOut += `# ${block.content}\n\n`;
       } else if (block.type === 'h2') {
-        content += `## ${block.content}\n\n`;
+        bodyOut += `## ${block.content}\n\n`;
       } else if (block.type === 'h3') {
-        content += `### ${block.content}\n\n`;
+        bodyOut += `### ${block.content}\n\n`;
       } else if (block.type === 'paragraph') {
-        content += `${block.content}\n\n`;
+        bodyOut += `${block.content}\n\n`;
+      } else if (block.type === 'code') {
+        bodyOut += `\`\`\`${block.codeLang || ""}\n${block.content}\n\`\`\`\n\n`;
+      } else if (block.type === 'yaml') {
+        bodyOut += `---\n${block.content}\n---\n\n`;
       } else if (block.type === 'list') {
         block.listItems?.forEach((item, lIdx) => {
           if (block.listType === 'todo') {
             const char = item.checked ? 'x' : ' ';
-            content += `*   [${char}] ${item.text}\n`;
+            bodyOut += `*   [${char}] ${item.text}\n`;
           } else if (block.listType === 'unordered') {
-            content += `* ${item.text}\n`;
+            bodyOut += `* ${item.text}\n`;
           } else if (block.listType === 'ordered') {
-            content += `${lIdx + 1}. ${item.text}\n`;
+            bodyOut += `${lIdx + 1}. ${item.text}\n`;
           }
         });
-        content += "\n";
+        bodyOut += "\n";
       }
     });
 
-    content = content.trim() + "\n";
-    
-    setFiles(prev => prev.map(f => f.path === filePath ? { ...f, content } : f));
-    setModifiedFiles(prev => ({ ...prev, [filePath]: true }));
+    const cleanBody = bodyOut.trim();
+    const normalizedPrefix = frontmatterPrefix
+      ? `${frontmatterPrefix.replace(/\s*$/, "")}\n\n`
+      : "";
+    const content = `${normalizedPrefix}${cleanBody}\n`;
+
+    const existingFile = files.find(f => f.path === filePath);
+    if (existingFile) {
+      handleUpsertWorkspaceFile({ ...existingFile, content });
+    } else {
+      setFiles(prev => prev.map(f => f.path === filePath ? { ...f, content } : f));
+      setModifiedFiles(prev => ({ ...prev, [filePath]: true }));
+    }
   };
 
   const renderGenericVisualEditor = (filePath: string) => {
-    const blocks = parseGenericMarkdown(files.find(f => f.path === filePath)?.content || "");
+    const { frontmatterPrefix, blocks } = parseGenericMarkdown(files.find(f => f.path === filePath)?.content || "");
 
     const handleBlockChange = (index: number, field: 'content' | 'listItems', value: any) => {
       const updated = [...blocks];
       updated[index] = { ...updated[index], [field]: value } as any;
-      saveGenericMarkdown(filePath, updated);
+      saveGenericMarkdown(filePath, frontmatterPrefix, updated);
     };
 
-    const handleAddBlock = (type: 'h2' | 'paragraph' | 'todo') => {
-      const newBlock: GenericBlock = {
-        type: type === 'todo' ? 'list' : type,
-        content: type === 'todo' ? '' : 'New text...',
-        listType: type === 'todo' ? 'todo' : undefined,
-        listItems: type === 'todo' ? [{ checked: false, text: 'New Item' }] : undefined
-      };
-      saveGenericMarkdown(filePath, [...blocks, newBlock]);
+    const handleAddBlock = (type: 'h2' | 'paragraph' | 'todo' | 'query') => {
+      const newBlock: GenericBlock =
+        type === 'query'
+          ? {
+              type: 'code',
+              codeLang: 'query',
+              content: 'FROM issues\nWHERE sprint = sprint-01\nSORT priority desc\nVIEW table',
+            }
+          : {
+              type: type === 'todo' ? 'list' : type,
+              content: type === 'todo' ? '' : 'New text...',
+              listType: type === 'todo' ? 'todo' : undefined,
+              listItems: type === 'todo' ? [{ checked: false, text: 'New Item' }] : undefined,
+            };
+      saveGenericMarkdown(filePath, frontmatterPrefix, [...blocks, newBlock]);
     };
 
     const handleDeleteBlock = (index: number) => {
       const updated = blocks.filter((_, idx) => idx !== index);
-      saveGenericMarkdown(filePath, updated);
+      saveGenericMarkdown(filePath, frontmatterPrefix, updated);
     };
 
     const handleMoveBlock = (index: number, direction: 'up' | 'down') => {
@@ -4444,14 +4568,20 @@ export default function Workspace() {
       const temp = updated[index];
       updated[index] = updated[targetIndex];
       updated[targetIndex] = temp;
-      saveGenericMarkdown(filePath, updated);
+      saveGenericMarkdown(filePath, frontmatterPrefix, updated);
     };
 
     return (
       <div className="visual-form-container" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '8px' }}>
-          <h3 style={{ fontSize: '18px', color: 'var(--text-primary)', margin: 0 }}>Visual Document Editor</h3>
-          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>Edit headings, paragraphs and lists structured in blocks.</p>
+          <h3 style={{ fontSize: '18px', color: 'var(--text-primary)', margin: 0 }}>
+            {language === 'en' ? 'Visual Document Editor' : 'Visueller Dokument-Editor'}
+          </h3>
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+            {language === 'en'
+              ? 'Edit headings, paragraphs, checklists, and Confluence Live Query blocks without losing YAML metadata.'
+              : 'Überschriften, Absätze, Checklisten und Live-Query-Blöcke strukturiert bearbeiten (YAML-Metadaten bleiben erhalten).'}
+          </p>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -4510,6 +4640,32 @@ export default function Workspace() {
                         value={block.content} 
                         onChange={(e) => handleBlockChange(idx, 'content', e.target.value)}
                         style={{ width: '100%', minHeight: '80px', padding: '10px 12px', borderRadius: '6px', backgroundColor: 'var(--bg-editor)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontSize: '13px', lineHeight: 1.5, resize: 'vertical', outline: 'none', fontFamily: 'var(--font-sans)' }}
+                      />
+                    </div>
+                  )}
+                  {block.type === 'code' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '10px', color: block.codeLang === 'query' ? 'var(--accent-green)' : 'var(--accent-blue)', fontWeight: 'bold' }}>
+                        {block.codeLang === 'query'
+                          ? 'CONFLUENCE LIVE QUERY MACRO (```query)'
+                          : `EMBEDDED BLOCK (\`\`\`${block.codeLang || 'code'})`}
+                      </span>
+                      <textarea
+                        value={block.content}
+                        onChange={(e) => handleBlockChange(idx, 'content', e.target.value)}
+                        style={{ width: '100%', minHeight: '88px', padding: '10px 12px', borderRadius: '6px', backgroundColor: 'var(--bg-editor)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontSize: '12px', lineHeight: 1.5, resize: 'vertical', outline: 'none', fontFamily: 'var(--font-mono)' }}
+                      />
+                    </div>
+                  )}
+                  {block.type === 'yaml' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '10px', color: 'var(--accent-yellow)', fontWeight: 'bold' }}>
+                        METADATA CARD (YAML)
+                      </span>
+                      <textarea
+                        value={block.content}
+                        onChange={(e) => handleBlockChange(idx, 'content', e.target.value)}
+                        style={{ width: '100%', minHeight: '84px', padding: '10px 12px', borderRadius: '6px', backgroundColor: 'var(--bg-editor)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontSize: '12px', lineHeight: 1.5, resize: 'vertical', outline: 'none', fontFamily: 'var(--font-mono)' }}
                       />
                     </div>
                   )}
@@ -4614,16 +4770,282 @@ export default function Workspace() {
           })}
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', marginTop: '16px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '16px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
           <button className="visual-add-btn" onClick={() => handleAddBlock('paragraph')} style={{ padding: '8px 14px', fontSize: '13px' }}>
-            <Plus size={14} /> + Add Paragraph
+            <Plus size={14} /> + {language === 'en' ? 'Paragraph' : 'Absatz'}
           </button>
           <button className="visual-add-btn" onClick={() => handleAddBlock('h2')} style={{ padding: '8px 14px', fontSize: '13px', backgroundColor: 'var(--bg-active)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}>
-            <Plus size={14} /> + Add Heading
+            <Plus size={14} /> + {language === 'en' ? 'Heading' : 'Überschrift'}
           </button>
           <button className="visual-add-btn" onClick={() => handleAddBlock('todo')} style={{ padding: '8px 14px', fontSize: '13px', backgroundColor: 'var(--bg-active)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}>
-            <Plus size={14} /> + Add Checklist
+            <Plus size={14} /> + {language === 'en' ? 'Checklist' : 'Checkliste'}
           </button>
+          <button className="visual-add-btn" onClick={() => handleAddBlock('query')} style={{ padding: '8px 14px', fontSize: '13px', backgroundColor: 'rgba(16, 185, 129, 0.14)', border: '1px solid rgba(16, 185, 129, 0.35)', color: 'var(--accent-green)' }}>
+            <Database size={14} /> + {language === 'en' ? 'Live Query Macro' : 'Live-Query-Makro'}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderAgileIssueForm = (filePath: string) => {
+    const fileObj = files.find(f => f.path === filePath);
+    const parsedIssue = fileObj ? parseIssueFromFile(fileObj) : null;
+    if (!parsedIssue) {
+      return renderGenericVisualEditor(filePath);
+    }
+
+    const allIssuesList = extractAllIssues(files);
+    const epicsList = allIssuesList.filter(i => i.type === "epic" && i.id !== parsedIssue.id);
+    const sprintsList = parseSprints(files);
+
+    const updateIssueField = <K extends keyof AgileIssue>(key: K, value: AgileIssue[K]) => {
+      const updated: AgileIssue = {
+        ...parsedIssue,
+        [key]: value,
+        updatedAt: new Date().toISOString(),
+      };
+      handleUpsertWorkspaceFile(serializeIssueToMarkdown(updated));
+    };
+
+    const fieldLabelStyle: React.CSSProperties = {
+      fontSize: '11px',
+      fontWeight: 600,
+      color: 'var(--text-muted)',
+      textTransform: 'uppercase',
+      marginBottom: '4px',
+      display: 'block',
+    };
+
+    const inputStyle: React.CSSProperties = {
+      width: '100%',
+      padding: '8px 10px',
+      borderRadius: '6px',
+      backgroundColor: 'var(--bg-editor)',
+      border: '1px solid var(--border-color)',
+      color: 'var(--text-primary)',
+      fontSize: '13px',
+      outline: 'none',
+    };
+
+    return (
+      <div className="visual-form-container" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px' }}>
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent-indigo)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {parsedIssue.id} • {language === 'en' ? 'Jira Issue Visual Form' : 'Jira-Ticket Formular'}
+            </div>
+            <h3 style={{ fontSize: '18px', color: 'var(--text-primary)', margin: '4px 0 0 0' }}>
+              {parsedIssue.title}
+            </h3>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              className="git-btn"
+              onClick={() => openExistingIssueInDrawer(parsedIssue)}
+              style={{ padding: '7px 12px', fontSize: '12px' }}
+            >
+              <Sparkles size={13} />
+              {language === 'en' ? 'Open Full Jira Drawer' : 'Im Jira-Drawer öffnen'}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ backgroundColor: 'var(--bg-panel)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div>
+            <label style={fieldLabelStyle}>{language === 'en' ? 'Title' : 'Titel'}</label>
+            <input
+              type="text"
+              value={parsedIssue.title}
+              onChange={(e) => updateIssueField('title', e.target.value)}
+              style={{ ...inputStyle, fontWeight: 600, fontSize: '15px' }}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
+            <div>
+              <label style={fieldLabelStyle}>{language === 'en' ? 'Type' : 'Typ'}</label>
+              <select
+                value={parsedIssue.type}
+                onChange={(e) => updateIssueField('type', e.target.value as IssueType)}
+                style={inputStyle}
+              >
+                <option value="epic">Epic</option>
+                <option value="story">Story</option>
+                <option value="task">Task</option>
+                <option value="bug">Bug</option>
+                <option value="spike">Spike</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={fieldLabelStyle}>Status</label>
+              <select
+                value={parsedIssue.status}
+                onChange={(e) => updateIssueField('status', e.target.value as IssueStatus)}
+                style={inputStyle}
+              >
+                <option value="backlog">Backlog</option>
+                <option value="ready">Ready</option>
+                <option value="in-progress">In Progress</option>
+                <option value="review">In Review</option>
+                <option value="done">Done</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={fieldLabelStyle}>{language === 'en' ? 'Priority' : 'Priorität'}</label>
+              <select
+                value={parsedIssue.priority}
+                onChange={(e) => updateIssueField('priority', e.target.value as IssuePriority)}
+                style={inputStyle}
+              >
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={fieldLabelStyle}>Story Points</label>
+              <select
+                value={parsedIssue.storyPoints}
+                onChange={(e) => updateIssueField('storyPoints', Number(e.target.value) || 0)}
+                style={inputStyle}
+              >
+                {FIBONACCI_POINTS.map(pt => (
+                  <option key={pt} value={pt}>{pt} SP</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label style={fieldLabelStyle}>{language === 'en' ? 'Assignee' : 'Bearbeiter'}</label>
+              <input
+                type="text"
+                value={parsedIssue.assignee}
+                onChange={(e) => updateIssueField('assignee', e.target.value)}
+                placeholder="@developer-a"
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={fieldLabelStyle}>Sprint</label>
+              <select
+                value={parsedIssue.sprint}
+                onChange={(e) => updateIssueField('sprint', e.target.value)}
+                style={inputStyle}
+              >
+                <option value="">{language === 'en' ? 'Unassigned (Backlog)' : 'Kein Sprint (Backlog)'}</option>
+                {sprintsList.map(sp => (
+                  <option key={sp.id} value={sp.id}>{sp.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label style={fieldLabelStyle}>Epic</label>
+              <select
+                value={parsedIssue.epic}
+                onChange={(e) => updateIssueField('epic', e.target.value)}
+                style={inputStyle}
+              >
+                <option value="">{language === 'en' ? 'None' : 'Kein Epic'}</option>
+                {epicsList.map(ep => (
+                  <option key={ep.id} value={ep.id}>{ep.id}: {ep.title}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label style={fieldLabelStyle}>{language === 'en' ? 'Start Date' : 'Startdatum'}</label>
+              <input
+                type="date"
+                value={parsedIssue.startDate || ''}
+                onChange={(e) => updateIssueField('startDate', e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={fieldLabelStyle}>{language === 'en' ? 'Due Date' : 'Enddatum'}</label>
+              <input
+                type="date"
+                value={parsedIssue.endDate || ''}
+                onChange={(e) => updateIssueField('endDate', e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label style={fieldLabelStyle}>{language === 'en' ? 'Description' : 'Beschreibung'}</label>
+            <textarea
+              value={parsedIssue.description}
+              onChange={(e) => updateIssueField('description', e.target.value)}
+              style={{ ...inputStyle, minHeight: '110px', resize: 'vertical', fontFamily: 'var(--font-sans)', lineHeight: 1.5 }}
+            />
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <label style={{ ...fieldLabelStyle, marginBottom: 0 }}>
+                {language === 'en' ? 'Acceptance Criteria' : 'Akzeptanzkriterien'}
+              </label>
+              <button
+                className="visual-add-btn"
+                onClick={() =>
+                  updateIssueField('acceptanceCriteria', [
+                    ...parsedIssue.acceptanceCriteria,
+                    { text: language === 'en' ? 'New criterion' : 'Neues Kriterium', checked: false },
+                  ])
+                }
+                style={{ padding: '4px 10px', fontSize: '11px' }}
+              >
+                <Plus size={12} /> {language === 'en' ? 'Add' : 'Hinzufügen'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {parsedIssue.acceptanceCriteria.map((ac, acIdx) => (
+                <div key={acIdx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="checkbox"
+                    checked={ac.checked}
+                    onChange={(e) => {
+                      const next = [...parsedIssue.acceptanceCriteria];
+                      next[acIdx] = { ...ac, checked: e.target.checked };
+                      updateIssueField('acceptanceCriteria', next);
+                    }}
+                    style={{ width: '15px', height: '15px', accentColor: 'var(--accent-indigo)', cursor: 'pointer' }}
+                  />
+                  <input
+                    type="text"
+                    value={ac.text}
+                    onChange={(e) => {
+                      const next = [...parsedIssue.acceptanceCriteria];
+                      next[acIdx] = { ...ac, text: e.target.value };
+                      updateIssueField('acceptanceCriteria', next);
+                    }}
+                    style={{ ...inputStyle, flex: 1, padding: '6px 10px', textDecoration: ac.checked ? 'line-through' : 'none', opacity: ac.checked ? 0.65 : 1 }}
+                  />
+                  <button
+                    className="visual-delete-btn"
+                    onClick={() =>
+                      updateIssueField(
+                        'acceptanceCriteria',
+                        parsedIssue.acceptanceCriteria.filter((_, idx) => idx !== acIdx)
+                      )
+                    }
+                    style={{ width: '28px', height: '28px', padding: 0 }}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -4631,7 +5053,9 @@ export default function Workspace() {
 
   const renderVisualEditor = () => {
     const cleanPath = activeFilePath.toLowerCase().replace(/\\/g, '/');
-    if (cleanPath.endsWith("sprint-backlog.md")) {
+    if (cleanPath.startsWith("issues/")) {
+      return renderAgileIssueForm(activeFilePath);
+    } else if (cleanPath.endsWith("sprint-backlog.md")) {
       return renderBacklogForm();
     } else if (cleanPath.endsWith("capacity.md")) {
       return renderCapacityForm();
@@ -5436,7 +5860,7 @@ ${changesList.join("\n")}
 
                     <button 
                       className="git-btn" 
-                      onClick={() => setIsQuickCreateIssueOpen(true)}
+                      onClick={openQuickCreateIssue}
                     >
                       <Plus size={14} /> {language === 'en' ? "New Jira Issue" : "Neues Jira-Ticket"}
                     </button>
@@ -7118,7 +7542,7 @@ ${allBlockerLines.join("\n") || "* Keine aktiven Blocker gemeldet"}`;
         language={language}
         roleMode={roleMode}
         enableGlobalShortcut={true}
-        onCreateIssue={() => setIsQuickCreateIssueOpen(true)}
+        onCreateIssue={openQuickCreateIssue}
         onOpenScrumBoard={() => {
           setActivePanel("pm");
           setPmSubTab("scrum");
@@ -7247,37 +7671,48 @@ ${allBlockerLines.join("\n") || "* Keine aktiven Blocker gemeldet"}`;
         }}
       />
 
-      {/* Global Quick-Create Jira Issue Drawer (triggered from Ctrl+K or Sidebar) */}
-      {isQuickCreateIssueOpen && (() => {
+      {/* Global Jira Issue Drawer (triggered from Ctrl+K, Sidebar, or Visual Issue Form) */}
+      {isQuickCreateIssueOpen && quickCreateDraft && (() => {
         const allIssuesNow = extractAllIssues(files);
         const epicsNow = allIssuesNow.filter(i => i.type === "epic");
         const sprintsNow = parseSprints(files);
-        const activeSprintNow = sprintsNow.find(s => s.state === "active");
-        const draftIssue = createBlankIssue(files, currentUser, {
-          sprint: activeSprintNow?.id || "",
-        });
         return (
           <IssueDrawer
-            issue={draftIssue}
+            issue={quickCreateDraft}
             isOpen={isQuickCreateIssueOpen}
-            isNew={true}
+            isNew={isQuickDrawerNew}
             epics={epicsNow}
             sprints={sprintsNow}
             allIssues={allIssuesNow}
             currentUser={currentUser}
             language={language}
-            onClose={() => setIsQuickCreateIssueOpen(false)}
-            onSave={(createdIssue) => {
-              handleUpsertWorkspaceFile(serializeIssueToMarkdown(createdIssue));
+            onClose={() => {
               setIsQuickCreateIssueOpen(false);
+              setQuickCreateDraft(null);
             }}
+            onSave={(savedIssue) => {
+              handleUpsertWorkspaceFile(serializeIssueToMarkdown(savedIssue));
+              setIsQuickCreateIssueOpen(false);
+              setQuickCreateDraft(null);
+            }}
+            onDelete={
+              !isQuickDrawerNew
+                ? (deletedIssue) => {
+                    handleDeleteWorkspaceFile(deletedIssue.filePath || `issues/${deletedIssue.id}.md`);
+                    setIsQuickCreateIssueOpen(false);
+                    setQuickCreateDraft(null);
+                  }
+                : undefined
+            }
             onOpenMarkdownFile={(filePath) => {
               handleOpenFile(filePath);
               setActivePanel("explorer");
               setIsQuickCreateIssueOpen(false);
+              setQuickCreateDraft(null);
             }}
             onCreateBranch={(iss, branchName) => {
               setIsQuickCreateIssueOpen(false);
+              setQuickCreateDraft(null);
               handleCreateBranchFromIssue(iss, branchName);
             }}
           />
