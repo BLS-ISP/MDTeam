@@ -1,0 +1,14 @@
+#!/bin/sh
+#
+# Pre-backup hook executed by NethServer 8 before Restic snapshots module state.
+# Flushes pending filesystem writes in the mdteam-data volume if the API container is active.
+#
+
+set -e
+
+if /usr/bin/podman container exists mdteam-api >/dev/null 2>&1; then
+    /usr/bin/podman exec mdteam-api /bin/sh -c "sync" >/dev/null 2>&1 || true
+fi
+
+sync
+exit 0

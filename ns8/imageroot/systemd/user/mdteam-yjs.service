@@ -1,0 +1,17 @@
+[Unit]
+Description=Podman mdteam-yjs.service
+BindsTo=mdteam.service
+After=mdteam.service
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=%S/state/environment
+WorkingDirectory=%S/state
+Restart=always
+TimeoutStopSec=70
+ExecStartPre=/bin/rm -f %t/mdteam-yjs.pid %t/mdteam-yjs.ctr-id
+ExecStart=/usr/bin/podman run --conmon-pidfile %t/mdteam-yjs.pid --cidfile %t/mdteam-yjs.ctr-id --cgroups=no-conmon --pod-id-file %t/mdteam.pod-id --replace -d --pull=missing --restart=on-failure --name mdteam-yjs --env PORT=1234 --env HOST=0.0.0.0 ${YJS_SERVER_IMAGE}
+ExecStop=/usr/bin/podman stop --ignore --cidfile %t/mdteam-yjs.ctr-id -t 10
+ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/mdteam-yjs.ctr-id
+PIDFile=%t/mdteam-yjs.pid
+Type=forking

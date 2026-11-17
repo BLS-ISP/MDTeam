@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "configure-module input",
+  "description": "Configuration payload for MDTeam Workspace on NethServer 8.",
+  "type": "object",
+  "required": [
+    "host",
+    "http2https",
+    "lets_encrypt"
+  ],
+  "properties": {
+    "host": {
+      "type": "string",
+      "minLength": 1,
+      "format": "hostname",
+      "description": "Fully qualified domain name routed via Traefik (e.g. mdteam.example.org)"
+    },
+    "http2https": {
+      "type": "boolean",
+      "description": "Redirect HTTP requests automatically to HTTPS"
+    },
+    "lets_encrypt": {
+      "type": "boolean",
+      "description": "Request an automatic Let's Encrypt TLS certificate via Traefik"
+    },
+    "ldap_domain": {
+      "type": "string",
+      "description": "Optional NethServer 8 user domain name (OpenLDAP or Samba AD); empty string disables LDAP"
+    },
+    "ldap_default_role": {
+      "type": "string",
+      "enum": [
+        "developer",
+        "stakeholder",
+        "scrum-master",
+        "product-owner",
+        "admin"
+      ],
+      "description": "Default Scrum role assigned to authenticated domain users without a specific group match"
+    },
+    "ldap_admin_group": {
+      "type": "string",
+      "description": "LDAP/AD group name mapped to the MDTeam 'admin' role"
+    },
+    "ldap_po_group": {
+      "type": "string",
+      "description": "LDAP/AD group name mapped to the MDTeam 'product-owner' role"
+    },
+    "ldap_sm_group": {
+      "type": "string",
+      "description": "LDAP/AD group name mapped to the MDTeam 'scrum-master' role"
+    },
+    "ldap_stakeholder_group": {
+      "type": "string",
+      "description": "LDAP/AD group name mapped to the MDTeam 'stakeholder' role"
+    },
+    "admin_password": {
+      "type": "string",
+      "description": "Optional initial or updated password for the local 'admin' account"
+    },
+    "initial_password": {
+      "type": "string",
+      "description": "Optional alias for admin_password when configuring via CLI"
+    }
+  }
+}

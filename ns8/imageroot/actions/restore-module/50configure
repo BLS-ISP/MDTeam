@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+
+import os
+import secrets
+import sys
+import agent
+
+sys.path.insert(
+    0,
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "bin")),
+)
+from mdteam_helpers import read_secrets_env, write_secrets_env  # noqa: E402
+
+env_on_disk = agent.read_envfile("environment") if os.path.isfile("environment") else {}
+
+host = (env_on_disk.get("TRAEFIK_HOST") or os.environ.get("TRAEFIK_HOST") or "").strip().lower()
+http2https = (
+    env_on_disk.get("TRAEFIK_HTTP2HTTPS")
+    or os.environ.get("TRAEFIK_HTTP2HTTPS")
+    or "True"
+) == "True"
+lets_encrypt = (
+    env_on_disk.get("TRAEFIK_LETS_ENCRYPT")
+    or os.environ.get("TRAEFIK_LETS_ENCRYPT")
+    or "False"
+) == "True"
+ldap_domain = (
+    env_on_disk.get("LDAP_DOMAIN") or os.environ.get("LDAP_DOMAIN") or ""
+).strip()
+ldap_default_role = (
+    env_on_disk.get("LDAP_DEFAULT_ROLE")
+    or os.environ.get("LDAP_DEFAULT_ROLE")
+    or "developer"
+).strip()
+ldap_admin_group = (
+    env_on_disk.get("LDAP_ADMIN_GROUP") or os.environ.get("LDAP_ADMIN_GROUP") or ""
+).strip()
+ldap_po_group = (
+    env_on_disk.get("LDAP_PO_GROUP") or os.environ.get("LDAP_PO_GROUP") or ""
+).strip()
+ldap_sm_group = (
+    env_on_disk.get("LDAP_SM_GROUP") or os.environ.get("LDAP_SM_GROUP") or ""
+).strip()
+ldap_stakeholder_group = (
+    env_on_disk.get("LDAP_STAKEHOLDER_GROUP")
+    or os.environ.get("LDAP_STAKEHOLDER_GROUP")
+    or ""
+).strip()
+
+existing_secrets = read_secrets_env("secrets.env")
+jwt_secret = existing_secrets.get("JWT_SECRET") or secrets.token_hex(32)
+persisted_password = existing_secrets.get("MDTEAM_INITIAL_PASSWORD", "")
+
+secrets_entries = {
+    "JWT_SECRET": jwt_secret,
+    "MDTEAM_JWT_SECRET": jwt_secret,
+    "MDTEAM_COOKIE_SECURE": "true" if http2https else "false",
+}
+if persisted_password:
+    secrets_entries["MDTEAM_INITIAL_PASSWORD"] = persisted_password
+
+ldap_resolved = False
+if ldap_domain:
+    try:
+        from agent.ldapproxy import Ldapproxy
+
+        lp = Ldapproxy().get_domain(ldap_domain)
+        secrets_entries.update(
+            {
+                "LDAP_ENABLED": "true",
+                "LDAP_DOMAIN": ldap_domain,
+                "LDAP_HOST": "accountprovider",
+                "LDAP_PORT": str(lp["port"]),
+                "LDAP_SCHEMA": str(lp["schema"]),
+                "LDAP_BASE_DN": str(lp["base_dn"]),
+                "LDAP_BIND_DN": str(lp.get("bind_dn", "")),
+                "LDAP_BIND_PASSWORD": str(lp.get("bind_password", "")),
+                "LDAP_DEFAULT_ROLE": ldap_default_role,
+                "LDAP_ADMIN_GROUP": ldap_admin_group,
+                "LDAP_PO_GROUP": ldap_po_group,
+                "LDAP_SM_GROUP": ldap_sm_group,
+                "LDAP_STAKEHOLDER_GROUP": ldap_stakeholder_group,
+            }
+        )
+        ldap_resolved = True
+    except Exception:
+        agent.set_env("LDAP_DOMAIN", "")
+        agent.dump_env()
+
+if not ldap_resolved:
+    secrets_entries.update(
+        {
+            "LDAP_ENABLED": "false",
+            "LDAP_DOMAIN": "",
+            "LDAP_DEFAULT_ROLE": ldap_default_role,
+            "LDAP_ADMIN_GROUP": ldap_admin_group,
+            "LDAP_PO_GROUP": ldap_po_group,
+            "LDAP_SM_GROUP": ldap_sm_group,
+            "LDAP_STAKEHOLDER_GROUP": ldap_stakeholder_group,
+        }
+    )
+
+write_secrets_env(secrets_entries, "secrets.env")
+os.chmod("secrets.env", 0o600)
+
+if host:
+    tcp_port = os.environ["TCP_PORT"]
+    response = agent.tasks.run(
+        agent_id=agent.resolve_agent_id("traefik@node"),
+        action="set-route",
+        data={
+            "instance": os.environ["MODULE_ID"],
+            "url": f"http://127.0.0.1:{tcp_port}",
+            "host": host,
+            "lets_encrypt": lets_encrypt,
+            "http2https": http2https,
+        },
+    )
+    agent.assert_exp(response["exit_code"] == 0)
+
+    agent.run_helper("systemctl", "--user", "daemon-reload").check_returncode()
+    agent.run_helper("systemctl", "--user", "enable", "mdteam.service").check_returncode()
+    agent.run_helper("systemctl", "--user", "restart", "mdteam.service").check_returncode()

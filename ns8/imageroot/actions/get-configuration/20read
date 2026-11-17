@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+
+import json
+import os
+import sys
+
+host = os.environ.get("TRAEFIK_HOST", "")
+http2https = os.environ.get("TRAEFIK_HTTP2HTTPS", "True") == "True"
+lets_encrypt = os.environ.get("TRAEFIK_LETS_ENCRYPT", "False") == "True"
+scheme = "https" if (http2https or lets_encrypt) else "http"
+app_url = f"{scheme}://{host}" if host else ""
+
+available_domains = []
+try:
+    from agent.ldapproxy import Ldapproxy
+
+    raw_domains = Ldapproxy().get_domains_list()
+    if isinstance(raw_domains, list):
+        available_domains = [
+            item["name"] if isinstance(item, dict) and "name" in item else str(item)
+            for item in raw_domains
+        ]
+except Exception:
+    available_domains = []
+
+config = {
+    "host": host,
+    "http2https": http2https,
+    "lets_encrypt": lets_encrypt,
+    "app_url": app_url,
+    "is_configured": bool(host),
+    "ldap_domain": os.environ.get("LDAP_DOMAIN", ""),
+    "ldap_default_role": os.environ.get("LDAP_DEFAULT_ROLE", "developer") or "developer",
+    "ldap_admin_group": os.environ.get("LDAP_ADMIN_GROUP", ""),
+    "ldap_po_group": os.environ.get("LDAP_PO_GROUP", ""),
+    "ldap_sm_group": os.environ.get("LDAP_SM_GROUP", ""),
+    "ldap_stakeholder_group": os.environ.get("LDAP_STAKEHOLDER_GROUP", ""),
+    "available_domains": available_domains,
+}
+
+json.dump(config, fp=sys.stdout)

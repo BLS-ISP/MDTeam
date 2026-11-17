@@ -1,0 +1,18 @@
+[Unit]
+Description=Podman mdteam-web.service
+BindsTo=mdteam.service
+Requires=mdteam-api.service mdteam-yjs.service
+After=mdteam-api.service mdteam-yjs.service
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=%S/state/environment
+WorkingDirectory=%S/state
+Restart=always
+TimeoutStopSec=70
+ExecStartPre=/bin/rm -f %t/mdteam-web.pid %t/mdteam-web.ctr-id
+ExecStart=/usr/bin/podman run --conmon-pidfile %t/mdteam-web.pid --cidfile %t/mdteam-web.ctr-id --cgroups=no-conmon --pod-id-file %t/mdteam.pod-id --replace -d --pull=missing --restart=on-failure --name mdteam-web ${WORKSPACE_WEB_IMAGE}
+ExecStop=/usr/bin/podman stop --ignore --cidfile %t/mdteam-web.ctr-id -t 10
+ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/mdteam-web.ctr-id
+PIDFile=%t/mdteam-web.pid
+Type=forking

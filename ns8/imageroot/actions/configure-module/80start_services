@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+
+import agent
+
+agent.run_helper("systemctl", "--user", "daemon-reload").check_returncode()
+agent.run_helper("systemctl", "--user", "enable", "mdteam.service").check_returncode()
+agent.run_helper("systemctl", "--user", "restart", "mdteam.service").check_returncode()
