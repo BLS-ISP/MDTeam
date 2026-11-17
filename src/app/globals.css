@@ -58,14 +58,17 @@ body {
 
 /* Header Navbar */
 .app-header {
-  height: 48px;
+  min-height: 48px;
   background-color: var(--bg-sidebar);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 4px 16px;
+  gap: 12px;
   user-select: none;
+  position: relative;
+  z-index: 40;
 }
 
 .logo-section {

@@ -9,6 +9,32 @@ import DocumentGraph from "../components/DocumentGraph";
 import DiffViewer from "../components/DiffViewer";
 import GlobalSearch from "../components/GlobalSearch";
 import ProblemsPanel from "../components/ProblemsPanel";
+import ScrumWorkspace from "../components/ScrumWorkspace";
+import IssueDrawer from "../components/IssueDrawer";
+import {
+  AgileIssue,
+  extractAllIssues,
+  parseSprints,
+  createBlankIssue,
+  serializeIssueToMarkdown,
+} from "../utils/issueEngine";
+import { LiveQueryBlock } from "../utils/queryMacro";
+import { exportDocumentToDocx } from "../utils/docxExporter";
+import {
+  PageGovernanceBar,
+  InlineCommentsDrawer,
+  TemplateGalleryModal,
+  PageHistoryModal,
+  handlePasteOrDropImage,
+  countOpenInlineComments,
+} from "../components/WikiEnhancements";
+import {
+  CommandPaletteModal,
+  AtlassianImportModal,
+  GitBranchModal,
+  WorkspaceHeaderControls,
+  WorkspaceRoleMode,
+} from "../components/CommandPaletteAndModals";
 
 // Initialize mermaid on client side
 if (typeof window !== "undefined") {
@@ -388,6 +414,290 @@ Qualitätskriterien, die eine User Story erfüllen muss, bevor sie in den Sprint
 *   [ ] Keine offenen Blocker: Storys dürfen im Sprint nicht blockiert sein (keine \`BLOCKED:\` Präfixe auf aktiven Aufgaben).
 *   [ ] Klare Beschreibung: Das Ticket darf keine leeren Platzhalter-Texte enthalten.
 `
+  },
+  {
+    path: "issues/MDT-101.md",
+    name: "MDT-101.md",
+    category: "issues",
+    content: `---
+id: "MDT-101"
+type: "epic"
+title: "Enterprise Security, SSO & Collaborative Architecture"
+status: "in-progress"
+priority: "critical"
+story_points: 21
+sprint: ""
+epic: ""
+assignee: "@product-owner"
+reporter: "@product-owner"
+labels: ["architecture", "security", "sso", "q2-roadmap"]
+blocked_by: []
+branch: "feat/MDT-101-enterprise-security-epic"
+start_date: "2026-06-01"
+end_date: "2026-06-21"
+created_at: "2026-06-01T08:30:00Z"
+updated_at: "2026-06-08T16:00:00Z"
+---
+
+# MDT-101: Enterprise Security, SSO & Collaborative Architecture
+
+## Description
+
+Deliver the core enterprise security and real-time collaboration foundation for **MDTeam Workspace** as specified in [ADR-0001: Modulare Authentifizierung](adrs/ADR-0001-auth-strategy.md) and [arc42 §2 Randbedingungen](arc42/02_constraints.md).
+
+Key outcomes for this Epic:
+- Seamless **Keycloak OIDC / OAuth2** Single Sign-On and **LDAP/AD** role mapping (\`developer\`, \`scrum-master\`, \`stakeholder\`).
+- Resilient **Yjs WebSocket** real-time document & Planning Poker synchronization across corporate firewalls.
+- Automated **Definition of Done (DoD)** & **Definition of Ready (DoR)** validation across Git-native Scrum tickets.
+
+## Acceptance Criteria
+
+- [x] Architecture strategy documented and accepted in ADR-0001
+- [x] Keycloak OIDC PKCE login & token validation shipped (MDT-102)
+- [ ] LDAP group-to-role mapping for Stakeholder Clean Mode completed (MDT-103)
+- [ ] Yjs WebSocket reconnection race condition resolved under restricted firewall rules (MDT-104)
+- [ ] Automated DoD/DoR linter checks integrated with Sprint issues (MDT-105)
+
+## Comments
+
+- **@product-owner** *(2026-06-01 09:00)*: Anchor Epic for our Q2 on-premises enterprise rollout. Target completion by June 21.
+- **@scrummaster** *(2026-06-05 11:30)*: MDT-102 is complete (8 SP); tracking firewall blocker on MDT-103 via MDT-104.
+`
+  },
+  {
+    path: "issues/MDT-102.md",
+    name: "MDT-102.md",
+    category: "issues",
+    content: `---
+id: "MDT-102"
+type: "story"
+title: "Implement Keycloak OAuth2 / OIDC Single Sign-On Flow"
+status: "done"
+priority: "high"
+story_points: 8
+sprint: "sprint-01"
+epic: "MDT-101"
+assignee: "@developer-a"
+reporter: "@product-owner"
+labels: ["auth", "sso", "keycloak"]
+blocked_by: []
+branch: "feat/MDT-102-oauth-sso"
+start_date: "2026-06-01"
+end_date: "2026-06-05"
+created_at: "2026-06-01T09:00:00Z"
+updated_at: "2026-06-05T16:30:00Z"
+---
+
+# MDT-102: Implement Keycloak OAuth2 / OIDC Single Sign-On Flow
+
+## Description
+
+As an enterprise developer, I want to authenticate via **Keycloak OpenID Connect (OIDC)** using Authorization Code + PKCE so that my Git commits and Yjs collaborative sessions are tied to my verified corporate identity without managing separate credentials.
+
+See [ADR-0001](adrs/ADR-0001-auth-strategy.md) for the modular authentication gateway design.
+
+## Acceptance Criteria
+
+- [x] Configure OIDC discovery endpoint (\`.well-known/openid-configuration\`) and PKCE challenge
+- [x] Validate JWT access & refresh tokens with automatic silent renewal
+- [x] Propagate authenticated \`@handle\` into Git commit author metadata and Yjs awareness state
+- [x] Verify fallback to local test identities in air-gapped developer mode
+
+## Comments
+
+- **@developer-a** *(2026-06-03 14:20)*: PKCE exchange and token refresh verified against local Keycloak 25 container.
+- **@product-owner** *(2026-06-05 16:30)*: Demo approved in Sprint Review preview — marking Done (8 SP).
+`
+  },
+  {
+    path: "issues/MDT-103.md",
+    name: "MDT-103.md",
+    category: "issues",
+    content: `---
+id: "MDT-103"
+type: "story"
+title: "LDAP Directory Role Sync & Stakeholder Clean Mode Mapping"
+status: "in-progress"
+priority: "high"
+story_points: 5
+sprint: "sprint-01"
+epic: "MDT-101"
+assignee: "@developer-a"
+reporter: "@scrummaster"
+labels: ["auth", "ldap", "rbac", "blocked"]
+blocked_by: ["MDT-104"]
+branch: "feat/MDT-103-ldap-role-mapping"
+start_date: "2026-06-05"
+end_date: "2026-06-11"
+created_at: "2026-06-01T09:15:00Z"
+updated_at: "2026-06-07T11:20:00Z"
+---
+
+# MDT-103: LDAP Directory Role Sync & Stakeholder Clean Mode Mapping
+
+## Description
+
+Synchronize Active Directory / LDAP organizational groups (\`CN=Engineering\`, \`CN=ProductManagement\`, \`CN=Stakeholders\`) to MDTeam workspace roles (\`developer\`, \`scrum\`, \`stakeholder\`) so Project Managers and Stakeholders automatically launch in distraction-free Confluence/Jira Clean Mode.
+
+## Acceptance Criteria
+
+- [x] Define role mapping schema for \`developer\`, \`scrum\`, and \`stakeholder\` workspace modes
+- [x] Persist active role mode and user handle in client session state
+- [ ] Verify live sync of role changes across Yjs collaborative rooms (blocked by MDT-104 reconnect race)
+- [ ] Document LDAPS port 636 / 389 firewall requirements in \`arc42/02_constraints.md\`
+
+## Comments
+
+- **@developer-a** *(2026-06-06 10:05)*: Role schema and Stakeholder Clean Mode UI toggle are working locally.
+- **@scrummaster** *(2026-06-07 11:20)*: Flagged as blocked by \`MDT-104\` until WebSocket session recovery on network switch is merged.
+`
+  },
+  {
+    path: "issues/MDT-104.md",
+    name: "MDT-104.md",
+    category: "issues",
+    content: `---
+id: "MDT-104"
+type: "bug"
+title: "Fix Yjs WebSocket Reconnection Race Condition & Firewall Timeout"
+status: "review"
+priority: "critical"
+story_points: 3
+sprint: "sprint-01"
+epic: "MDT-101"
+assignee: "@developer-b"
+reporter: "@developer-a"
+labels: ["bug", "yjs", "sync", "network"]
+blocked_by: []
+branch: "fix/MDT-104-yjs-reconnect-race"
+start_date: "2026-06-04"
+end_date: "2026-06-09"
+created_at: "2026-06-04T10:00:00Z"
+updated_at: "2026-06-08T15:45:00Z"
+---
+
+# MDT-104: Fix Yjs WebSocket Reconnection Race Condition & Firewall Timeout
+
+## Description
+
+When a client switches VPN / corporate Wi-Fi or when the Yjs WebSocket server (\`ws://localhost:1234\`) drops idle connections after 60 seconds, \`WebsocketProvider\` occasionally duplicates initial document insertion or stalls in \`connecting\` state without falling back cleanly to offline mode.
+
+*(Added mid-sprint as urgent critical bug fix — +3 SP scope addition to \`sprint-01\`.)*
+
+## Acceptance Criteria
+
+- [x] Guard initial \`ytext.insert\` inside \`provider.on('sync')\` transaction so reconnects never duplicate Markdown content
+- [x] Add fast WebSocket reachability probe and clean offline fallback for Planning Poker & Editor rooms
+- [x] Cleanly destroy \`MonacoBinding\`, \`WebsocketProvider\`, and \`Y.Doc\` instances on component unmount
+- [ ] Final peer code review by \`@developer-a\`
+
+## Comments
+
+- **@developer-a** *(2026-06-04 10:05)*: Reproduced during VPN reconnect while testing OIDC session renewal.
+- **@developer-b** *(2026-06-08 15:45)*: Fix pushed to \`fix/MDT-104-yjs-reconnect-race\` with bounded backoff and clean offline fallback. Ready for review!
+`
+  },
+  {
+    path: "issues/MDT-105.md",
+    name: "MDT-105.md",
+    category: "issues",
+    content: `---
+id: "MDT-105"
+type: "task"
+title: "Automate DoD/DoR Linter Validation for Git-Native Sprint Issues"
+status: "ready"
+priority: "medium"
+story_points: 5
+sprint: "sprint-01"
+epic: "MDT-101"
+assignee: "@developer-b"
+reporter: "@scrummaster"
+labels: ["quality", "linter", "scrum"]
+blocked_by: []
+branch: ""
+start_date: "2026-06-08"
+end_date: "2026-06-14"
+created_at: "2026-06-01T09:30:00Z"
+updated_at: "2026-06-07T09:00:00Z"
+---
+
+# MDT-105: Automate DoD/DoR Linter Validation for Git-Native Sprint Issues
+
+## Description
+
+Extend MDTeam's quality governance workflow so Sprint tickets in \`issues/MDT-*.md\` adhere to our [Definition of Ready](management/definition-of-ready.md) and [Definition of Done](management/definition-of-done.md):
+- Every issue planned into an active sprint should have a Fibonacci Story Point estimate (\`> 0\`), an \`@assignee\`, and at least one Acceptance Criterion.
+- Blocked tickets (\`blocked_by\` non-empty) surface immediately in Agile Metrics and Kanban red alerts.
+
+## Acceptance Criteria
+
+- [x] Define YAML frontmatter schema for \`issues/MDT-*.md\` and \`sprints/sprint-*.md\`
+- [ ] Verify unestimated tickets can be estimated directly in Scrum Planning Poker
+- [ ] Verify completed Sprint velocity writes back to \`management/capacity.md\`
+
+## Comments
+
+- **@scrummaster** *(2026-06-02 13:10)*: Estimated at 5 SP during Sprint 01 Planning Poker session (full consensus).
+`
+  },
+  {
+    path: "sprints/sprint-01.md",
+    name: "sprint-01.md",
+    category: "sprints",
+    content: `---
+id: "sprint-01"
+name: "Sprint 01 — Enterprise Auth & Collab Core"
+goal: "Deliver Keycloak OIDC Single Sign-On, harden Yjs WebSocket sync reconnection, and ship Git-native Scrum tracking."
+state: "active"
+start_date: "2026-06-01"
+end_date: "2026-06-14"
+committed_points: 18
+---
+
+# Sprint 01 — Enterprise Auth & Collab Core
+
+## Sprint Goal
+
+Deliver Keycloak OIDC Single Sign-On, harden Yjs WebSocket sync reconnection, and ship Git-native Scrum tracking across \`issues/MDT-*.md\`.
+
+## Planned Scope & Notes
+
+- **Committed Baseline:** 18 SP (\`MDT-102\` 8 SP, \`MDT-103\` 5 SP, \`MDT-105\` 5 SP)
+- **Mid-Sprint Scope Addition:** \`MDT-104\` (+3 SP critical Yjs reconnection bug fix added 2026-06-04)
+- **Linked Epic:** [MDT-101: Enterprise Security, SSO & Collaborative Architecture](issues/MDT-101.md)
+`
+  },
+  {
+    path: "wiki/confluence-hub.md",
+    name: "confluence-hub.md",
+    category: "wiki",
+    content: `---
+title: "Engineering & Product Knowledge Hub"
+review_status: "approved"
+approved_by: "@product-owner"
+updated_at: "2026-06-08"
+---
+
+# Engineering & Product Knowledge Hub
+
+Willkommen im **Git-nativen Confluence & Jira Hub** von MDTeam Workspace. Alle Architekturentscheidungen ([ADR-0001](adrs/ADR-0001-auth-strategy.md)), [arc42-Kapitel](arc42/01_introduction_goals.md) und Sprint-Tickets ([Epic MDT-101](issues/MDT-101.md)) leben versioniert im selben Git-Repository.
+
+## Live Sprint 01 Jira Macro
+
+\`\`\`query
+FROM issues
+WHERE sprint = sprint-01
+SORT priority desc
+VIEW table
+\`\`\`
+
+## Architektur-Entscheidungen (ADRs)
+
+\`\`\`query
+FROM adrs
+VIEW cards
+\`\`\`
+`
   }
 ];
 
@@ -457,6 +767,9 @@ const translations = {
     // Explorer Categories Display Names
     arc42Doc: "arc42-Dokumentation",
     adrsDecisions: "adrs (Entscheidungen)",
+    issuesTickets: "issues (Jira-Tickets)",
+    sprintsFolder: "sprints (Sprints)",
+    wikiPages: "wiki (Confluence-Seiten)",
     mgmtRoadmaps: "management (Roadmaps)",
     meetProtokolle: "meetings (Protokolle)",
     
@@ -554,6 +867,9 @@ const translations = {
     // Explorer Categories Display Names
     arc42Doc: "arc42 Documentation",
     adrsDecisions: "adrs (Decisions)",
+    issuesTickets: "issues (Jira Tickets)",
+    sprintsFolder: "sprints (Sprints)",
+    wikiPages: "wiki (Confluence Pages)",
     mgmtRoadmaps: "management (Roadmaps)",
     meetProtokolle: "meetings (Minutes)",
     
@@ -642,10 +958,34 @@ export default function Workspace() {
   const [openTabs, setOpenTabs] = useState<string[]>(["arc42/01_introduction_goals.md"]);
   const [activePanel, setActivePanel] = useState<"explorer" | "search" | "git" | "pm" | "meetings" | "settings" | "graph" | "cheatsheet">("explorer");
   const [showPreview, setShowPreview] = useState<boolean>(true);
-  const [pmSubTab, setPmSubTab] = useState<"roadmap" | "kanban" | "velocity" | "retro" | "standup">("roadmap");
+  const [pmSubTab, setPmSubTab] = useState<"scrum" | "roadmap" | "kanban" | "velocity" | "retro" | "standup">("scrum");
   const [editorMode, setEditorMode] = useState<"code" | "visual">("code");
   const [showCheatsheetModal, setShowCheatsheetModal] = useState<boolean>(false);
-  const [categories, setCategories] = useState<string[]>(["arc42", "adrs", "management", "meetings"]);
+  const [categories, setCategories] = useState<string[]>([
+    "arc42",
+    "adrs",
+    "issues",
+    "sprints",
+    "wiki",
+    "management",
+    "meetings"
+  ]);
+
+  // Role mode, identity & Jira/Confluence/GitOps modal states
+  const [roleMode, setRoleMode] = useState<WorkspaceRoleMode>("developer");
+  const [currentUser, setCurrentUser] = useState<string>("@developer-a");
+  const [stakeholderEditVisual, setStakeholderEditVisual] = useState<boolean>(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
+  const [isGitBranchModalOpen, setIsGitBranchModalOpen] = useState<boolean>(false);
+  const [pendingBranchName, setPendingBranchName] = useState<string>("");
+  const [pendingBranchIssue, setPendingBranchIssue] = useState<AgileIssue | null>(null);
+  const [isCommentsDrawerOpen, setIsCommentsDrawerOpen] = useState<boolean>(false);
+  const [selectedCommentQuote, setSelectedCommentQuote] = useState<string>("");
+  const [selectedCommentLine, setSelectedCommentLine] = useState<number | undefined>(undefined);
+  const [isPageHistoryOpen, setIsPageHistoryOpen] = useState<boolean>(false);
+  const [isTemplateGalleryOpen, setIsTemplateGalleryOpen] = useState<boolean>(false);
+  const [isQuickCreateIssueOpen, setIsQuickCreateIssueOpen] = useState<boolean>(false);
 
   const [isTauri, setIsTauri] = useState<boolean>(false);
   const [tauriRootFolder, setTauriRootFolder] = useState<string>("");
@@ -655,6 +995,21 @@ export default function Workspace() {
   const [editorBInstance, setEditorBInstance] = useState<any>(null);
   const [yjsUrl, setYjsUrl] = useState<string>("ws://localhost:1234");
   const [yjsStatus, setYjsStatus] = useState<"connected" | "connecting" | "offline">("offline");
+
+  const handleRoleModeChange = (nextMode: WorkspaceRoleMode) => {
+    setRoleMode(nextMode);
+    if (nextMode === "scrum") {
+      setActivePanel("pm");
+      setPmSubTab("scrum");
+    } else if (nextMode === "stakeholder") {
+      setSplitActive(false);
+      setShowProblemsPanel(false);
+      setStakeholderEditVisual(false);
+      if (activePanel === "git" || activePanel === "cheatsheet" || activePanel === "settings") {
+        setActivePanel("explorer");
+      }
+    }
+  };
 
   useEffect(() => {
     if (!yjsUrl) {
@@ -712,9 +1067,7 @@ export default function Workspace() {
         
         lines.forEach(line => {
           if (line.length >= 3) {
-            const status = line.substring(0, 2);
             let filepath = line.substring(3).trim();
-            // Handle quotes around filenames if git outputs them
             if (filepath.startsWith('"') && filepath.endsWith('"')) {
               filepath = filepath.substring(1, filepath.length - 1);
             }
@@ -732,7 +1085,17 @@ export default function Workspace() {
         }
       }
 
-      // 2. Fetch native Git Log
+      // 2. Fetch native Git Current Branch
+      try {
+        const branchOut = await invoke<string>("git_current_branch", { repoPath: rootPath });
+        if (branchOut && branchOut.trim()) {
+          setActiveBranch(branchOut.trim());
+        }
+      } catch {
+        // Ignore if not a git repo yet
+      }
+
+      // 3. Fetch native Git Log
       try {
         const logOutput = await invoke<string>("git_log", { repoPath: rootPath, limit: 15 });
         const lines = logOutput.split("\n").filter(l => l.trim() !== "");
@@ -759,14 +1122,25 @@ export default function Workspace() {
   const rescanTauriFiles = async (rootPath = tauriRootFolder) => {
     if (!rootPath) return;
     try {
-      const { readDir, readTextFile, mkdir } = await import("@tauri-apps/plugin-fs");
+      const { readDir, readTextFile, mkdir, exists } = await import("@tauri-apps/plugin-fs");
       const loadedFiles: WorkspaceFile[] = [];
       const loadedCategories = new Set<string>();
+      const cleanRoot = rootPath.replace(/[\\/]+$/, "");
 
       const scan = async (dirPath: string, relativePath: string = "") => {
         const entries = await readDir(dirPath);
         for (const entry of entries) {
-          if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === "out" || entry.name === "target" || entry.name === "dist" || entry.name === "public") {
+          if (
+            entry.name.startsWith(".") ||
+            entry.name === "node_modules" ||
+            entry.name === "out" ||
+            entry.name === "target" ||
+            entry.name === "dist" ||
+            entry.name === "public" ||
+            entry.name === "src" ||
+            entry.name === "src-tauri" ||
+            entry.name === "assets"
+          ) {
             continue;
           }
           
@@ -790,29 +1164,195 @@ export default function Workspace() {
         }
       };
 
-      await scan(rootPath);
+      await scan(cleanRoot);
+
+      const defaultDirs = ["arc42", "adrs", "issues", "sprints", "wiki", "management", "meetings"];
 
       if (loadedFiles.length === 0) {
-        // Initialize default dirs on disk
-        const defaultDirs = ["arc42", "adrs", "management", "meetings"];
+        // Empty directory: initialize default directories and write seed INITIAL_FILES
         for (const d of defaultDirs) {
-          await mkdir(`${rootPath}/${d}`, { recursive: true });
+          await mkdir(`${cleanRoot}/${d}`, { recursive: true });
           loadedCategories.add(d);
         }
         
-        // Write INITIAL_FILES to disk
         const { writeTextFile } = await import("@tauri-apps/plugin-fs");
         for (const initFile of INITIAL_FILES) {
-          const absPath = `${rootPath}/${initFile.path}`;
+          const absPath = `${cleanRoot}/${initFile.path}`;
+          const lastSlash = absPath.lastIndexOf("/");
+          if (lastSlash > 0) {
+            await mkdir(absPath.slice(0, lastSlash), { recursive: true });
+          }
           await writeTextFile(absPath, initFile.content);
           loadedFiles.push(initFile);
         }
+      } else {
+        // Existing workspace: ensure issues, sprints, wiki directories exist without overwriting any existing user files
+        for (const agileDir of ["issues", "sprints", "wiki"]) {
+          await mkdir(`${cleanRoot}/${agileDir}`, { recursive: true });
+          loadedCategories.add(agileDir);
+        }
       }
 
-      setCategories(Array.from(loadedCategories).sort());
+      // Load persisted inline comments store if present on disk
+      try {
+        const inlineCommentsPath = `${cleanRoot}/.mdteam/inline-comments.json`;
+        if (await exists(inlineCommentsPath)) {
+          const commentsRaw = await readTextFile(inlineCommentsPath);
+          loadedFiles.push({
+            path: ".mdteam/inline-comments.json",
+            name: "inline-comments.json",
+            category: ".mdteam",
+            content: commentsRaw,
+          });
+        }
+      } catch {
+        // Ignore if .mdteam/inline-comments.json does not exist yet
+      }
+
+      setCategories(Array.from(loadedCategories).filter(c => !c.startsWith(".")).sort());
       setFiles(loadedFiles);
     } catch (e) {
       console.error("Failed to rescan files:", e);
+    }
+  };
+
+  // Persist a single WorkspaceFile to React state + Tauri disk
+  const handleUpsertWorkspaceFile = async (file: WorkspaceFile) => {
+    const normalizedPath = file.path.replace(/\\/g, "/");
+    const slashIdx = normalizedPath.lastIndexOf("/");
+    const derivedCat = file.category || (slashIdx !== -1 ? normalizedPath.slice(0, slashIdx) : "other");
+    const derivedName = file.name || (slashIdx !== -1 ? normalizedPath.slice(slashIdx + 1) : normalizedPath);
+    const normalizedFile: WorkspaceFile = {
+      path: normalizedPath,
+      name: derivedName,
+      category: derivedCat,
+      content: file.content,
+    };
+
+    setFiles(prev => {
+      const existsIdx = prev.findIndex(f => f.path === normalizedPath);
+      if (existsIdx !== -1) {
+        const next = [...prev];
+        next[existsIdx] = normalizedFile;
+        return next;
+      }
+      return [...prev, normalizedFile];
+    });
+
+    if (derivedCat && !derivedCat.startsWith(".")) {
+      setCategories(prev => (prev.includes(derivedCat) ? prev : [...prev, derivedCat].sort()));
+    }
+
+    setModifiedFiles(prev => ({ ...prev, [normalizedPath]: true }));
+
+    if (isTauri && tauriRootFolder) {
+      try {
+        const { mkdir, writeTextFile } = await import("@tauri-apps/plugin-fs");
+        const cleanRoot = tauriRootFolder.replace(/[\\/]+$/, "");
+        const absPath = `${cleanRoot}/${normalizedPath}`;
+        const lastSlash = absPath.lastIndexOf("/");
+        if (lastSlash > 0) {
+          await mkdir(absPath.slice(0, lastSlash), { recursive: true });
+        }
+        await writeTextFile(absPath, normalizedFile.content);
+      } catch (err) {
+        console.error("Failed to write workspace file to Tauri disk:", normalizedPath, err);
+      }
+    }
+  };
+
+  // Persist multiple WorkspaceFiles atomically to React state + Tauri disk
+  const handleUpsertMultipleFiles = async (newFiles: WorkspaceFile[]) => {
+    if (!newFiles || newFiles.length === 0) return;
+
+    const normalizedList: WorkspaceFile[] = newFiles.map(file => {
+      const normalizedPath = file.path.replace(/\\/g, "/");
+      const slashIdx = normalizedPath.lastIndexOf("/");
+      const derivedCat = file.category || (slashIdx !== -1 ? normalizedPath.slice(0, slashIdx) : "other");
+      const derivedName = file.name || (slashIdx !== -1 ? normalizedPath.slice(slashIdx + 1) : normalizedPath);
+      return {
+        path: normalizedPath,
+        name: derivedName,
+        category: derivedCat,
+        content: file.content,
+      };
+    });
+
+    setFiles(prev => {
+      const map = new Map<string, WorkspaceFile>();
+      prev.forEach(f => map.set(f.path, f));
+      normalizedList.forEach(nf => map.set(nf.path, nf));
+      return Array.from(map.values());
+    });
+
+    setCategories(prev => {
+      const catSet = new Set(prev);
+      normalizedList.forEach(nf => {
+        if (nf.category && !nf.category.startsWith(".")) {
+          catSet.add(nf.category);
+        }
+      });
+      return Array.from(catSet).sort();
+    });
+
+    setModifiedFiles(prev => {
+      const next = { ...prev };
+      normalizedList.forEach(nf => {
+        next[nf.path] = true;
+      });
+      return next;
+    });
+
+    if (isTauri && tauriRootFolder) {
+      try {
+        const { mkdir, writeTextFile } = await import("@tauri-apps/plugin-fs");
+        const cleanRoot = tauriRootFolder.replace(/[\\/]+$/, "");
+        for (const nf of normalizedList) {
+          const absPath = `${cleanRoot}/${nf.path}`;
+          const lastSlash = absPath.lastIndexOf("/");
+          if (lastSlash > 0) {
+            await mkdir(absPath.slice(0, lastSlash), { recursive: true });
+          }
+          await writeTextFile(absPath, nf.content);
+        }
+      } catch (err) {
+        console.error("Failed to batch-write workspace files to Tauri disk:", err);
+      }
+    }
+  };
+
+  // Delete a WorkspaceFile from React state + Tauri disk
+  const handleDeleteWorkspaceFile = async (targetPath: string) => {
+    const normalizedPath = targetPath.replace(/\\/g, "/");
+    setFiles(prev => {
+      const remaining = prev.filter(f => f.path !== normalizedPath);
+      if (activeFilePath === normalizedPath) {
+        setActiveFilePath(remaining[0]?.path || "");
+      }
+      if (activeFilePathB === normalizedPath) {
+        setActiveFilePathB(remaining[0]?.path || "");
+      }
+      return remaining;
+    });
+    setOpenTabs(prev => prev.filter(t => t !== normalizedPath));
+    setOpenTabsB(prev => prev.filter(t => t !== normalizedPath));
+    setModifiedFiles(prev => {
+      const next = { ...prev };
+      delete next[normalizedPath];
+      return next;
+    });
+
+    if (isTauri && tauriRootFolder) {
+      try {
+        const { exists, remove } = await import("@tauri-apps/plugin-fs");
+        const cleanRoot = tauriRootFolder.replace(/[\\/]+$/, "");
+        const absPath = `${cleanRoot}/${normalizedPath}`;
+        if (await exists(absPath)) {
+          await remove(absPath);
+        }
+      } catch (err) {
+        console.error("Failed to delete workspace file from Tauri disk:", normalizedPath, err);
+      }
     }
   };
 
@@ -929,10 +1469,15 @@ export default function Workspace() {
     
     const saveToDisk = async () => {
       try {
-        const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+        const { mkdir, writeTextFile } = await import("@tauri-apps/plugin-fs");
+        const cleanRoot = tauriRootFolder.replace(/[\\/]+$/, "");
         for (const file of files) {
           if (!isMounted) return;
-          const absPath = `${tauriRootFolder}/${file.path}`;
+          const absPath = `${cleanRoot}/${file.path}`;
+          const lastSlash = absPath.lastIndexOf("/");
+          if (lastSlash > 0) {
+            await mkdir(absPath.slice(0, lastSlash), { recursive: true });
+          }
           await writeTextFile(absPath, file.content);
         }
         
@@ -1508,9 +2053,100 @@ export default function Workspace() {
     }
   };
 
+  const insertMarkdownImage = (markdownImage: string) => {
+    const activeRef = activeEditorPane === 'A' ? editorRef : editorRefB;
+    if (roleMode !== "stakeholder" && editorMode === "code" && activeRef.current) {
+      insertText(`\n${markdownImage}\n`);
+    } else if (activeFile) {
+      const targetPath = activeEditorPane === 'B' && splitActive && activeFilePathB ? activeFilePathB : activeFile.path;
+      const targetObj = files.find(f => f.path === targetPath);
+      if (targetObj) {
+        const nextContent = `${targetObj.content.replace(/\s*$/, "")}\n\n${markdownImage}\n`;
+        handleUpsertWorkspaceFile({ ...targetObj, content: nextContent });
+      }
+    }
+  };
+
+  const handleEditorPasteCapture = async (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = Array.from(e.clipboardData?.items || []);
+    const imageItem = items.find(item => item.kind === "file" && item.type.startsWith("image/"));
+    if (!imageItem) return;
+    const blob = imageItem.getAsFile();
+    if (!blob) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    const res = await handlePasteOrDropImage(blob, isTauri, tauriRootFolder);
+    if (res?.markdown) {
+      insertMarkdownImage(res.markdown);
+    }
+  };
+
+  const handleEditorDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    const droppedFiles = Array.from(e.dataTransfer?.files || []);
+    const imageFiles = droppedFiles.filter(
+      f => f.type.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(f.name || "")
+    );
+    if (imageFiles.length === 0) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    for (const imgFile of imageFiles) {
+      const res = await handlePasteOrDropImage(imgFile, isTauri, tauriRootFolder);
+      if (res?.markdown) {
+        insertMarkdownImage(res.markdown);
+      }
+    }
+  };
+
+  const captureSelectionForComment = () => {
+    let quote = "";
+    let lineNum: number | undefined = undefined;
+    if (editorRef.current && roleMode !== "stakeholder" && editorMode === "code") {
+      try {
+        const sel = editorRef.current.getSelection();
+        const model = editorRef.current.getModel();
+        if (sel && model) {
+          const selectedText = model.getValueInRange(sel).trim();
+          if (selectedText) {
+            quote = selectedText.slice(0, 280);
+            lineNum = sel.startLineNumber;
+          } else if (sel.startLineNumber) {
+            lineNum = sel.startLineNumber;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    if (!quote && typeof window !== "undefined") {
+      const winSel = window.getSelection()?.toString().trim() || "";
+      if (winSel) {
+        quote = winSel.slice(0, 280);
+      }
+    }
+    setSelectedCommentQuote(quote);
+    setSelectedCommentLine(lineNum);
+  };
+
+  const handleCreateBranchFromIssue = (issue: AgileIssue, suggestedBranchName: string) => {
+    const updatedIssue: AgileIssue = {
+      ...issue,
+      branch: suggestedBranchName,
+      updatedAt: new Date().toISOString(),
+    };
+    handleUpsertWorkspaceFile(serializeIssueToMarkdown(updatedIssue));
+    setPendingBranchIssue(updatedIssue);
+    setPendingBranchName(suggestedBranchName);
+    setIsGitBranchModalOpen(true);
+  };
+
   // Handle auto-completion styled block insertion
   const insertTemplateBlock = (type: string) => {
     switch (type) {
+      case "query":
+        insertText(`\n\`\`\`query\nFROM issues\nWHERE sprint = sprint-01\nSORT priority desc\nVIEW table\n\`\`\`\n`);
+        break;
       case "adr":
         insertText(`\n# ADR-XXXX: [Titel der Entscheidung]\n\n---\ntitle: "ADR-XXXX: [Titel]"\nstatus: "accepted"\nmilestone: "Architektur-Entscheidungen"\nstart_date: "${new Date().toISOString().split('T')[0]}"\nend_date: "${new Date().toISOString().split('T')[0]}"\nassignee: "Lead Architect"\ncolor: "#10b981"\n---\n\n## Status\n==Akzeptiert== (Zuvor: ~~vorgeschlagen~~)\n\n## Kontext\n[Kontext beschreiben...]\n\n## Entscheidung\n[Entscheidung beschreiben...]\n\n## Konsequenzen\n* [x] [Konsequenz 1]\n* [ ] [Konsequenz 2]\n\n<details>\n<summary>Weitere Diskussionspunkte & Notizen</summary>\n\n*   Alternative A wurde wegen Latenz verworfen.\n*   Alternative B war zu teuer.\n</details>\n`);
         break;
@@ -1914,15 +2550,42 @@ export default function Workspace() {
           });
 
           if (Object.keys(data).length > 0) {
+            const isIssueCard = Boolean(data.id && data.type);
+            const isSprintCard = Boolean(data.state && (data.goal || data.committed_points));
+            const isWikiMetaOnly = Boolean(data.review_status && !data.milestone && !isIssueCard && !isSprintCard);
+
             const statusColors: Record<string, { bg: string, text: string }> = {
               completed: { bg: 'rgba(16, 185, 129, 0.15)', text: 'var(--accent-green)' },
+              done: { bg: 'rgba(16, 185, 129, 0.15)', text: 'var(--accent-green)' },
+              approved: { bg: 'rgba(16, 185, 129, 0.15)', text: 'var(--accent-green)' },
+              accepted: { bg: 'rgba(16, 185, 129, 0.15)', text: 'var(--accent-green)' },
+              active: { bg: 'rgba(59, 130, 246, 0.15)', text: 'var(--accent-blue)' },
               'in-progress': { bg: 'rgba(59, 130, 246, 0.15)', text: 'var(--accent-blue)' },
-              pending: { bg: 'rgba(107, 114, 128, 0.15)', text: 'var(--text-muted)' }
+              review: { bg: 'rgba(245, 158, 11, 0.16)', text: 'var(--accent-yellow)' },
+              'in-review': { bg: 'rgba(245, 158, 11, 0.16)', text: 'var(--accent-yellow)' },
+              ready: { bg: 'rgba(168, 85, 247, 0.16)', text: '#a855f7' },
+              pending: { bg: 'rgba(107, 114, 128, 0.15)', text: 'var(--text-muted)' },
+              backlog: { bg: 'rgba(107, 114, 128, 0.15)', text: 'var(--text-muted)' },
+              draft: { bg: 'rgba(245, 158, 11, 0.14)', text: 'var(--accent-yellow)' },
             };
-            const currentStatus = (data.status || 'pending').toLowerCase();
+
+            const currentStatus = (
+              data.status ||
+              data.state ||
+              data.review_status ||
+              'pending'
+            ).toLowerCase();
             const colors = data.color 
               ? { bg: `color-mix(in srgb, ${data.color.trim()} 15%, transparent)`, text: data.color.trim() }
               : (statusColors[currentStatus] || statusColors.pending);
+
+            const cardHeaderLabel = isIssueCard
+              ? `${data.id} • ${(data.type || 'issue').toUpperCase()}${data.story_points ? ` • ${data.story_points} SP` : ''}`
+              : isSprintCard
+                ? (language === 'en' ? 'Agile Sprint Metadata' : 'Agile Sprint-Metadaten')
+                : isWikiMetaOnly
+                  ? (language === 'en' ? 'Confluence Page Governance' : 'Confluence Seiten-Governance')
+                  : (language === 'en' ? 'Milestone / Roadmap Data' : 'Meilenstein / Roadmap-Daten');
 
             elements.push(
               <div 
@@ -1943,7 +2606,7 @@ export default function Workspace() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 600, color: 'var(--accent-indigo)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     <Calendar size={12} />
-                    <span>Meilenstein / Roadmap-Daten</span>
+                    <span>{cardHeaderLabel}</span>
                   </div>
                   <span 
                     style={{ 
@@ -1958,25 +2621,55 @@ export default function Workspace() {
                     {currentStatus.toUpperCase()}
                   </span>
                 </div>
-                {data.title && (
+                {(data.title || data.name) && (
                   <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    {data.title}
+                    {data.title || data.name}
                   </div>
                 )}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
                   {data.milestone && (
                     <div>
-                      <span style={{ color: 'var(--text-muted)' }}>Meilenstein:</span> {data.milestone}
+                      <span style={{ color: 'var(--text-muted)' }}>{language === 'en' ? 'Milestone:' : 'Meilenstein:'}</span> {data.milestone}
+                    </div>
+                  )}
+                  {data.priority && (
+                    <div>
+                      <span style={{ color: 'var(--text-muted)' }}>{language === 'en' ? 'Priority:' : 'Priorität:'}</span> {data.priority.toUpperCase()}
                     </div>
                   )}
                   {data.assignee && (
                     <div>
-                      <span style={{ color: 'var(--text-muted)' }}>Zuständig:</span> {data.assignee}
+                      <span style={{ color: 'var(--text-muted)' }}>{language === 'en' ? 'Assignee:' : 'Zuständig:'}</span> {data.assignee}
+                    </div>
+                  )}
+                  {data.sprint && (
+                    <div>
+                      <span style={{ color: 'var(--text-muted)' }}>Sprint:</span> {data.sprint}
+                    </div>
+                  )}
+                  {data.epic && (
+                    <div>
+                      <span style={{ color: 'var(--text-muted)' }}>Epic:</span> {data.epic}
+                    </div>
+                  )}
+                  {data.branch && (
+                    <div>
+                      <span style={{ color: 'var(--text-muted)' }}>Branch:</span> <code>{data.branch}</code>
+                    </div>
+                  )}
+                  {data.approved_by && (
+                    <div>
+                      <span style={{ color: 'var(--text-muted)' }}>{language === 'en' ? 'Approved by:' : 'Freigegeben von:'}</span> {data.approved_by}
+                    </div>
+                  )}
+                  {data.committed_points && (
+                    <div>
+                      <span style={{ color: 'var(--text-muted)' }}>Committed SP:</span> {data.committed_points} SP
                     </div>
                   )}
                   {data.start_date && data.end_date && (
                     <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Zeitraum:</span> 
+                      <span style={{ color: 'var(--text-muted)' }}>{language === 'en' ? 'Timeline:' : 'Zeitraum:'}</span> 
                       <span style={{ fontWeight: 500 }}>{data.start_date}</span>
                       <ArrowRight size={12} style={{ color: 'var(--text-muted)', margin: '0 4px' }} />
                       <span style={{ fontWeight: 500 }}>{data.end_date}</span>
@@ -2037,6 +2730,19 @@ export default function Workspace() {
 
           if (currentType === "mermaid") {
             elements.push(<MermaidElement key={`mermaid-${i}`} chart={currentCode} />);
+          } else if (currentType === "query" || currentType === "jql") {
+            elements.push(
+              <LiveQueryBlock
+                key={`query-${i}`}
+                queryText={currentCode}
+                files={files}
+                onOpenFile={(targetPath) => {
+                  handleOpenFile(targetPath);
+                  setActivePanel("explorer");
+                }}
+                language={language}
+              />
+            );
           } else if (currentType === "drawio") {
             const url = currentCode.trim();
             elements.push(
@@ -2303,6 +3009,13 @@ export default function Workspace() {
         // 3. Code block template suggestions
         if (textUntilPosition.endsWith('```')) {
           suggestions.push(
+            {
+              label: 'query',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'query\nFROM ${1:issues}\nWHERE ${2:sprint = sprint-01}\nSORT ${3:priority desc}\nVIEW ${4:table}\n```',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              detail: 'Confluence Live Query Macro (Issues / ADRs / Pages)'
+            },
             {
               label: 'drawio',
               kind: monaco.languages.CompletionItemKind.Snippet,
@@ -4083,6 +4796,18 @@ ${changesList.join("\n")}
       downloadName = `${activeFile.name.replace('.md', '')}.${format}`;
     }
 
+    if (format === "docx") {
+      const docTitle =
+        scope === "book"
+          ? language === "en"
+            ? "MDTeam arc42 Architecture Manual"
+            : "MDTeam arc42 Architekturdokumentation"
+          : (content.match(/^#\s+(.+)$/m)?.[1]?.trim() || activeFile.name.replace(/\.md$/i, ""));
+      await exportDocumentToDocx(downloadName, docTitle, content, isTauri);
+      setShowExportModal(false);
+      return;
+    }
+
     if (format === "pdf") {
       setPrintScope(scope);
       // Wait for React to render the printable container
@@ -4235,10 +4960,10 @@ ${changesList.join("\n")}
         <div className="logo-section">
           <span className="logo-icon"><Sparkles size={18} /></span>
           <span>MDTeam Workspace</span>
-          <span className="logo-badge">Git & arc42</span>
+          <span className="logo-badge">Jira • Confluence • arc42</span>
         </div>
         
-        <div className="header-status">
+        <div className="header-status" style={{ gap: '10px' }}>
           <div className="status-indicator">
             <span className={`status-dot ${Object.keys(modifiedFiles).length > 0 ? "syncing" : ""}`}></span>
             <span>
@@ -4247,8 +4972,33 @@ ${changesList.join("\n")}
                 : t.syncedWithGit}
             </span>
           </div>
+
+          <WorkspaceHeaderControls
+            roleMode={roleMode}
+            onRoleModeChange={handleRoleModeChange}
+            currentUser={currentUser}
+            onCurrentUserChange={setCurrentUser}
+            files={files}
+            onOpenFile={(filePath) => {
+              handleOpenFile(filePath);
+              setActivePanel("explorer");
+            }}
+            language={language}
+            currentBranch={roleMode === "stakeholder" ? undefined : activeBranch}
+            onOpenGitBranchModal={
+              roleMode === "stakeholder"
+                ? undefined
+                : () => {
+                    setPendingBranchName("");
+                    setPendingBranchIssue(null);
+                    setIsGitBranchModalOpen(true);
+                  }
+            }
+            onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+            onOpenImportModal={() => setIsImportModalOpen(true)}
+          />
           
-          <div className="language-selector" style={{ display: 'flex', gap: '4px', backgroundColor: 'rgba(255, 255, 255, 0.05)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border-color)', marginRight: '12px' }}>
+          <div className="language-selector" style={{ display: 'flex', gap: '4px', backgroundColor: 'rgba(255, 255, 255, 0.05)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
             <button 
               className={`lang-btn ${language === 'de' ? 'active' : ''}`}
               onClick={() => { setLanguage('de'); localStorage.setItem("language", 'de'); }}
@@ -4284,11 +5034,6 @@ ${changesList.join("\n")}
               EN
             </button>
           </div>
-
-          <div className="user-profile">
-            <div className="user-avatar">JD</div>
-            <span style={{ fontSize: "12px" }}>Jane Doe ({t.devRole})</span>
-          </div>
         </div>
       </header>
 
@@ -4313,13 +5058,15 @@ ${changesList.join("\n")}
               <Search size={20} />
             </button>
             
-            <button 
-              className={`strip-btn ${activePanel === "git" ? "active" : ""}`}
-              onClick={() => setActivePanel("git")}
-              title={t.titleGit}
-            >
-              <GitBranch size={20} />
-            </button>
+            {roleMode !== "stakeholder" && (
+              <button 
+                className={`strip-btn ${activePanel === "git" ? "active" : ""}`}
+                onClick={() => setActivePanel("git")}
+                title={t.titleGit}
+              >
+                <GitBranch size={20} />
+              </button>
+            )}
 
             <button 
               className={`strip-btn ${activePanel === "graph" ? "active" : ""}`}
@@ -4346,22 +5093,26 @@ ${changesList.join("\n")}
             </button>
           </div>
 
-          <button 
-            className={`strip-btn ${activePanel === "cheatsheet" ? "active" : ""}`}
-            onClick={() => setActivePanel("cheatsheet")}
-            title={t.titleCheatsheet}
-            style={{ marginBottom: '8px' }}
-          >
-            <HelpCircle size={20} />
-          </button>
+          {roleMode !== "stakeholder" && (
+            <button 
+              className={`strip-btn ${activePanel === "cheatsheet" ? "active" : ""}`}
+              onClick={() => setActivePanel("cheatsheet")}
+              title={t.titleCheatsheet}
+              style={{ marginBottom: '8px' }}
+            >
+              <HelpCircle size={20} />
+            </button>
+          )}
 
-          <button 
-            className={`strip-btn ${activePanel === "settings" ? "active" : ""}`}
-            onClick={() => setActivePanel("settings")}
-            title={t.titleSettings}
-          >
-            <Settings size={20} />
-          </button>
+          {roleMode !== "stakeholder" && (
+            <button 
+              className={`strip-btn ${activePanel === "settings" ? "active" : ""}`}
+              onClick={() => setActivePanel("settings")}
+              title={t.titleSettings}
+            >
+              <Settings size={20} />
+            </button>
+          )}
         </div>
 
         {/* Dynamic Context Panel */}
@@ -4472,7 +5223,7 @@ ${changesList.join("\n")}
                 )}
 
                 <div className="panel-content" style={{ flex: 1, overflowY: 'auto' }}>
-                  {categories.map(cat => {
+                  {categories.filter(cat => !cat.startsWith(".")).map(cat => {
                     const parts = cat.split("/");
                     const depth = parts.length - 1;
                     const lastPart = parts[parts.length - 1];
@@ -4480,6 +5231,9 @@ ${changesList.join("\n")}
                     let displayName = lastPart;
                     if (cat === "arc42") displayName = t.arc42Doc;
                     else if (cat === "adrs") displayName = t.adrsDecisions;
+                    else if (cat === "issues") displayName = t.issuesTickets;
+                    else if (cat === "sprints") displayName = t.sprintsFolder;
+                    else if (cat === "wiki") displayName = t.wikiPages;
                     else if (cat === "management") displayName = t.mgmtRoadmaps;
                     else if (cat === "meetings") displayName = t.meetProtokolle;
 
@@ -4637,46 +5391,74 @@ ${changesList.join("\n")}
           {activePanel === "pm" && (
             <>
               <div className="panel-header">
-                <span>{language === 'en' ? "Project Status" : "Projektstatus"}</span>
+                <span>{language === 'en' ? "Agile & Doc Health" : "Agile & Projektstatus"}</span>
               </div>
-              <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div className="git-status-section">
-                  <div className="git-status-title">{language === 'en' ? "Progress" : "Fortschritt"}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '20px', fontWeight: 'bold', margin: '8px 0' }}>
-                    <CheckCircle size={20} style={{ color: 'var(--accent-green)' }} />
-                    <span>65%</span>
-                  </div>
-                  <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--border-color)', borderRadius: '3px', overflow: 'hidden' }}>
-                    <div style={{ width: '65%', height: '100%', backgroundColor: 'var(--accent-green)' }}></div>
-                  </div>
-                </div>
+              {(() => {
+                const allAgileIssues = extractAllIssues(files);
+                const nonEpics = allAgileIssues.filter(i => i.type !== "epic");
+                const totalPts = nonEpics.reduce((acc, i) => acc + (i.storyPoints || 0), 0);
+                const donePts = nonEpics.filter(i => i.status === "done").reduce((acc, i) => acc + (i.storyPoints || 0), 0);
+                const pct = totalPts > 0 ? Math.round((donePts / totalPts) * 100) : 0;
+                const adrCount = files.filter(f => f.path.startsWith("adrs/")).length;
+                const wikiCount = files.filter(f => f.path.startsWith("wiki/")).length;
+                const activeSprints = parseSprints(files).filter(s => s.state === "active");
+                return (
+                  <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div className="git-status-section">
+                      <div className="git-status-title">{language === 'en' ? "Story Points Done" : "Story Points Erledigt"}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '20px', fontWeight: 'bold', margin: '8px 0' }}>
+                        <CheckCircle size={20} style={{ color: 'var(--accent-green)' }} />
+                        <span>{pct}%</span>
+                        <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>({donePts}/{totalPts} SP)</span>
+                      </div>
+                      <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--border-color)', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ width: `${pct}%`, height: '100%', backgroundColor: 'var(--accent-green)' }}></div>
+                      </div>
+                    </div>
 
-                <div className="git-status-section">
-                  <div className="git-status-title">{language === 'en' ? "Document Quality" : "Dokumentenqualität"}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>{language === 'en' ? "arc42 Coverage:" : "arc42 Abdeckung:"}</span>
-                      <span style={{ fontWeight: 'bold', color: 'var(--accent-green)' }}>100%</span>
+                    <div className="git-status-section">
+                      <div className="git-status-title">{language === 'en' ? "Workspace Governance" : "Workspace Governance"}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>{language === 'en' ? "Active Sprint:" : "Aktiver Sprint:"}</span>
+                          <span style={{ fontWeight: 'bold', color: 'var(--accent-indigo)' }}>{activeSprints[0]?.id || "—"}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>{language === 'en' ? "Jira Tickets:" : "Jira-Tickets:"}</span>
+                          <span style={{ fontWeight: 'bold', color: 'var(--accent-green)' }}>{allAgileIssues.length}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>{language === 'en' ? "ADRs & Wiki:" : "ADRs & Wiki:"}</span>
+                          <span style={{ fontWeight: 'bold', color: 'var(--accent-blue)' }}>{adrCount} ADR / {wikiCount} Wiki</span>
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>{language === 'en' ? "ADRs maintained:" : "ADRs gepflegt:"}</span>
-                      <span style={{ fontWeight: 'bold', color: 'var(--accent-blue)' }}>{language === 'en' ? "Active (1)" : "Aktiv (1)"}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>{language === 'en' ? "Last Meeting:" : "Letztes Meeting:"}</span>
-                      <span style={{ fontWeight: 'bold' }}>{language === 'en' ? "Today" : "Heute"}</span>
-                    </div>
-                  </div>
-                </div>
 
-                <button 
-                  className="git-btn" 
-                  onClick={() => { setActivePanel("pm"); triggerDownload("pdf", "book"); }}
-                  style={{ backgroundColor: 'var(--accent-blue)' }}
-                >
-                  <FileDown size={14} /> {language === 'en' ? "Export Report" : "Report exportieren"}
-                </button>
-              </div>
+                    <button 
+                      className="git-btn" 
+                      onClick={() => setIsQuickCreateIssueOpen(true)}
+                    >
+                      <Plus size={14} /> {language === 'en' ? "New Jira Issue" : "Neues Jira-Ticket"}
+                    </button>
+
+                    <button 
+                      className="git-btn" 
+                      onClick={() => { setActivePanel("pm"); triggerDownload("docx", "book"); }}
+                      style={{ backgroundColor: 'var(--bg-sidebar)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                    >
+                      <FileText size={14} /> {language === 'en' ? "Export arc42 DOCX" : "arc42 als DOCX"}
+                    </button>
+
+                    <button 
+                      className="git-btn" 
+                      onClick={() => { setActivePanel("pm"); triggerDownload("pdf", "book"); }}
+                      style={{ backgroundColor: 'var(--accent-blue)' }}
+                    >
+                      <FileDown size={14} /> {language === 'en' ? "Export PDF Report" : "PDF-Report exportieren"}
+                    </button>
+                  </div>
+                );
+              })()}
             </>
           )}
 
@@ -4981,54 +5763,26 @@ ${changesList.join("\n")}
             </div>
 
             {/* PM Sub Tabs Navigation */}
-            <div className="pm-tabs" style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', marginBottom: '20px', paddingBottom: '1px' }}>
+            <div className="pm-tabs" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', borderBottom: '1px solid var(--border-color)', marginBottom: '20px', paddingBottom: '1px' }}>
               <button 
-                className={`pm-tab-btn ${pmSubTab === "roadmap" ? "active" : ""}`}
-                onClick={() => setPmSubTab("roadmap")}
+                className={`pm-tab-btn ${pmSubTab === "scrum" ? "active" : ""}`}
+                onClick={() => setPmSubTab("scrum")}
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: pmSubTab === "roadmap" ? 'var(--accent-indigo)' : 'var(--text-secondary)',
-                  borderBottom: pmSubTab === "roadmap" ? '2px solid var(--accent-indigo)' : 'none',
+                  color: pmSubTab === "scrum" ? 'var(--accent-indigo)' : 'var(--text-secondary)',
+                  borderBottom: pmSubTab === "scrum" ? '2px solid var(--accent-indigo)' : 'none',
                   padding: '8px 16px',
-                  fontWeight: pmSubTab === "roadmap" ? 600 : 400,
+                  fontWeight: pmSubTab === "scrum" ? 600 : 400,
                   cursor: 'pointer',
-                  fontSize: '13px'
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
                 }}
               >
-                {language === 'en' ? "Roadmap & Timeline" : "Roadmap & Timeline"}
-              </button>
-              <button 
-                className={`pm-tab-btn ${pmSubTab === "kanban" ? "active" : ""}`}
-                onClick={() => setPmSubTab("kanban")}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: pmSubTab === "kanban" ? 'var(--accent-indigo)' : 'var(--text-secondary)',
-                  borderBottom: pmSubTab === "kanban" ? '2px solid var(--accent-indigo)' : 'none',
-                  padding: '8px 16px',
-                  fontWeight: pmSubTab === "kanban" ? 600 : 400,
-                  cursor: 'pointer',
-                  fontSize: '13px'
-                }}
-              >
-                {language === 'en' ? "Sprint Kanban Board" : "Sprint Kanban Board"}
-              </button>
-              <button 
-                className={`pm-tab-btn ${pmSubTab === "velocity" ? "active" : ""}`}
-                onClick={() => setPmSubTab("velocity")}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: pmSubTab === "velocity" ? 'var(--accent-indigo)' : 'var(--text-secondary)',
-                  borderBottom: pmSubTab === "velocity" ? '2px solid var(--accent-indigo)' : 'none',
-                  padding: '8px 16px',
-                  fontWeight: pmSubTab === "velocity" ? 600 : 400,
-                  cursor: 'pointer',
-                  fontSize: '13px'
-                }}
-              >
-                {language === 'en' ? "Burndown & Capacity" : "Burndown & Kapazität"}
+                <Sparkles size={14} />
+                {language === 'en' ? "Jira & Scrum Workspace" : "Jira & Scrum Workspace"}
               </button>
               <button 
                 className={`pm-tab-btn ${pmSubTab === "retro" ? "active" : ""}`}
@@ -5062,7 +5816,74 @@ ${changesList.join("\n")}
               >
                 {language === 'en' ? "Standup Assistant" : "Standup Assistent"}
               </button>
+              <button 
+                className={`pm-tab-btn ${pmSubTab === "roadmap" ? "active" : ""}`}
+                onClick={() => setPmSubTab("roadmap")}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: pmSubTab === "roadmap" ? 'var(--accent-indigo)' : 'var(--text-secondary)',
+                  borderBottom: pmSubTab === "roadmap" ? '2px solid var(--accent-indigo)' : 'none',
+                  padding: '8px 16px',
+                  fontWeight: pmSubTab === "roadmap" ? 600 : 400,
+                  cursor: 'pointer',
+                  fontSize: '13px'
+                }}
+              >
+                {language === 'en' ? "arc42 Radar & Milestones" : "arc42 Radar & Meilensteine"}
+              </button>
+              <button 
+                className={`pm-tab-btn ${pmSubTab === "kanban" ? "active" : ""}`}
+                onClick={() => setPmSubTab("kanban")}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: pmSubTab === "kanban" ? 'var(--accent-indigo)' : 'var(--text-secondary)',
+                  borderBottom: pmSubTab === "kanban" ? '2px solid var(--accent-indigo)' : 'none',
+                  padding: '8px 16px',
+                  fontWeight: pmSubTab === "kanban" ? 600 : 400,
+                  cursor: 'pointer',
+                  fontSize: '13px'
+                }}
+              >
+                {language === 'en' ? "Classic Markdown Backlog" : "Klassisches Backlog"}
+              </button>
+              <button 
+                className={`pm-tab-btn ${pmSubTab === "velocity" ? "active" : ""}`}
+                onClick={() => setPmSubTab("velocity")}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: pmSubTab === "velocity" ? 'var(--accent-indigo)' : 'var(--text-secondary)',
+                  borderBottom: pmSubTab === "velocity" ? '2px solid var(--accent-indigo)' : 'none',
+                  padding: '8px 16px',
+                  fontWeight: pmSubTab === "velocity" ? 600 : 400,
+                  cursor: 'pointer',
+                  fontSize: '13px'
+                }}
+              >
+                {language === 'en' ? "Capacity Table" : "Kapazitäts-Tabelle"}
+              </button>
             </div>
+
+            {pmSubTab === "scrum" && (
+              <div style={{ margin: '-8px 0 0 0', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden', minHeight: '620px', display: 'flex', flexDirection: 'column' }}>
+                <ScrumWorkspace
+                  files={files}
+                  onUpsertFile={handleUpsertWorkspaceFile}
+                  onUpsertMultipleFiles={handleUpsertMultipleFiles}
+                  onDeleteFile={handleDeleteWorkspaceFile}
+                  onOpenFile={(targetPath) => {
+                    handleOpenFile(targetPath);
+                    setActivePanel("explorer");
+                  }}
+                  onCreateBranchFromIssue={handleCreateBranchFromIssue}
+                  yjsUrl={yjsUrl}
+                  currentUser={currentUser}
+                  language={language}
+                />
+              </div>
+            )}
 
             {pmSubTab === "roadmap" && (
               <>
@@ -5539,37 +6360,51 @@ ${changesList.join("\n")}
               <div className="timeline-card">
                 <h3 style={{ fontSize: '15px', fontWeight: 600, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Sparkles size={18} style={{ color: 'var(--accent-indigo)' }} />
-                  {language === 'en' ? "Daily Standup Assistant (Automatically generated)" : "Daily Standup Assistent (Automatisch generiert)"}
+                  {language === 'en' ? "Daily Standup Assistant (Jira Issues + Sprint Backlog)" : "Daily Standup Assistent (Jira-Tickets + Sprint-Backlog)"}
                 </h3>
                 
                 {(() => {
                   const backlog = getBacklogItems();
                   const impediments = getImpedimentItems();
+                  const agileIssues = extractAllIssues(files).filter(iss => iss.type !== "epic");
                   
-                  const doneTasks = backlog.filter(i => i.status === 'done');
-                  const inProgressTasks = backlog.filter(i => i.status === 'in-progress');
+                  const doneLines = [
+                    ...agileIssues.filter(i => i.status === "done").map(i => `* [x] [${i.id}] ${i.title} (${i.assignee || "Unassigned"} • ${i.storyPoints} SP)`),
+                    ...backlog.filter(i => i.status === 'done').map(t => `* [x] ${t.title} (${t.assignee})`)
+                  ];
+                  const inProgressLines = [
+                    ...agileIssues.filter(i => i.status === "in-progress" || i.status === "review").map(i => `* [/] [${i.id}] ${i.title} [${i.status.toUpperCase()}] (${i.assignee || "Unassigned"})`),
+                    ...backlog.filter(i => i.status === 'in-progress').map(t => `* [/] ${t.title} (${t.assignee})`)
+                  ];
+                  const blockedIssueLines = agileIssues
+                    .filter(i => i.status !== "done" && i.blockedBy.length > 0)
+                    .map(i => `* [ ] BLOCKED: [${i.id}] ${i.title} — blocked by ${i.blockedBy.join(", ")} (${i.assignee || "Unassigned"})`);
+                  const allBlockerLines = [
+                    ...blockedIssueLines,
+                    ...impediments.map(i => `* [ ] BLOCKED: ${i.title} (${i.assignee})`)
+                  ];
                   
                   const standupText = language === 'en' 
                     ? `Daily Standup Report - ${new Date().toLocaleDateString("en-US")}
 
 1. Completed yesterday:
-${doneTasks.map(t => `* [x] ${t.title} (${t.assignee})`).join("\n") || "* No tasks in DONE status"}
+${doneLines.join("\n") || "* No tasks in DONE status"}
 
 2. Focus today:
-${inProgressTasks.map(t => `* [/] ${t.title} (${t.assignee})`).join("\n") || "* No tasks in IN-PROGRESS status"}
+${inProgressLines.join("\n") || "* No tasks in IN-PROGRESS status"}
 
 3. Blockers / Impediments:
-${impediments.map(i => `* [ ] BLOCKED: ${i.title} (${i.assignee})`).join("\n") || "* No active blockers reported"}`
+${allBlockerLines.join("\n") || "* No active blockers reported"}`
                     : `Daily Standup Bericht - ${new Date().toLocaleDateString("de-DE")}
 
 1. Gestern erledigt:
-${doneTasks.map(t => `* [x] ${t.title} (${t.assignee})`).join("\n") || "* Keine Aufgaben im Status DONE"}
+${doneLines.join("\n") || "* Keine Aufgaben im Status DONE"}
 
 2. Heute im Fokus:
-${inProgressTasks.map(t => `* [/] ${t.title} (${t.assignee})`).join("\n") || "* Keine Aufgaben im Status IN-PROGRESS"}
+${inProgressLines.join("\n") || "* Keine Aufgaben im Status IN-PROGRESS"}
 
 3. Blocker / Impediments:
-${impediments.map(i => `* [ ] BLOCKED: ${i.title} (${i.assignee})`).join("\n") || "* Keine aktiven Blocker gemeldet"}`;
+${allBlockerLines.join("\n") || "* Keine aktiven Blocker gemeldet"}`;
 
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -5611,174 +6446,379 @@ ${impediments.map(i => `* [ ] BLOCKED: ${i.title} (${i.assignee})`).join("\n") |
             />
           </div>
         ) : (
-          <div className="editor-workspace" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            {/* Split Editor Pane Container */}
-            <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-              
-              {/* Left Panel: Editor A */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: splitActive ? '1px solid var(--border-color)' : 'none', minWidth: 0 }}>
-                {/* Tab Bar A */}
-                <div className="editor-tabs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', overflow: 'hidden', position: 'relative' }}>
-                  {/* Scrollable Tabs List */}
+          <div
+            className="editor-workspace"
+            style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+            onPasteCapture={handleEditorPasteCapture}
+            onDragOver={(e) => {
+              if (Array.from(e.dataTransfer?.types || []).includes("Files")) {
+                e.preventDefault();
+              }
+            }}
+            onDrop={handleEditorDrop}
+          >
+            {/* Confluence-Style Page Governance Bar above active .md documents */}
+            {activeFile && activeFile.path.endsWith(".md") && (
+              <PageGovernanceBar
+                activeFile={activeFile}
+                files={files}
+                currentUser={currentUser}
+                commentCount={countOpenInlineComments(files, activeFile.path)}
+                isTauri={isTauri}
+                language={language}
+                onUpdateContent={(newContent) => {
+                  handleUpsertWorkspaceFile({ ...activeFile, content: newContent });
+                }}
+                onOpenComments={() => {
+                  captureSelectionForComment();
+                  setIsCommentsDrawerOpen(true);
+                }}
+                onOpenHistory={() => setIsPageHistoryOpen(true)}
+                onOpenTemplates={() => setIsTemplateGalleryOpen(true)}
+                onExportDocx={() => triggerDownload("docx", "single")}
+              />
+            )}
+
+            {roleMode === "stakeholder" ? (
+              /* Stakeholder / PM Clean Mode: Pure Confluence Wiki & Visual Form Experience */
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', backgroundColor: 'var(--bg-editor)' }}>
+                <div className="editor-tabs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', overflow: 'hidden' }}>
                   <div style={{ display: 'flex', overflowX: 'auto', flex: 1, height: '100%', scrollbarWidth: 'none' }}>
                     {openTabs.map(tabPath => {
                       const tabFile = files.find(f => f.path === tabPath);
                       return (
-                        <div 
-                          key={tabPath} 
-                          className={`editor-tab ${activeFilePath === tabPath ? "active" : ""} ${activeEditorPane === 'A' && activeFilePath === tabPath ? "pane-focused" : ""}`}
-                          onClick={() => { setActiveFilePath(tabPath); setActiveEditorPane('A'); }}
+                        <div
+                          key={tabPath}
+                          className={`editor-tab ${activeFilePath === tabPath ? "active" : ""}`}
+                          onClick={() => setActiveFilePath(tabPath)}
                         >
                           <FileText size={12} />
                           <span>{tabFile?.name}</span>
-                          {modifiedFiles[tabPath] && (
-                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--accent-yellow)' }}></span>
-                          )}
                           <span className="tab-close" onClick={(e) => handleCloseTab(e, tabPath)}><X size={10} /></span>
                         </div>
                       );
                     })}
                   </div>
-                  
-                  {/* Editor A Actions */}
-                  <div className="editor-actions" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', height: '100%', padding: '0 12px', backgroundColor: 'var(--bg-sidebar)', borderLeft: '1px solid var(--border-color)' }}>
-                    {activeFilePath.endsWith(".md") && (
-                      <div className="editor-mode-toggle" style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: '6px', overflow: 'hidden', height: '24px', marginRight: '8px' }}>
-                        <button 
-                          className={`mode-btn ${editorMode === "code" ? "active" : ""}`}
-                          onClick={() => setEditorMode("code")}
-                          style={{
-                            background: editorMode === "code" ? 'var(--accent-indigo)' : 'transparent',
-                            color: editorMode === "code" ? 'white' : 'var(--text-secondary)',
-                            border: 'none',
-                            padding: '2px 8px',
-                            fontSize: '11px',
-                            cursor: 'pointer',
-                            fontWeight: editorMode === "code" ? 600 : 400
-                          }}
-                        >
-                          Code
-                        </button>
-                        <button 
-                          className={`mode-btn ${editorMode === "visual" ? "active" : ""}`}
-                          onClick={() => setEditorMode("visual")}
-                          style={{
-                            background: editorMode === "visual" ? 'var(--accent-indigo)' : 'transparent',
-                            color: editorMode === "visual" ? 'white' : 'var(--text-secondary)',
-                            border: 'none',
-                            padding: '2px 8px',
-                            fontSize: '11px',
-                            cursor: 'pointer',
-                            fontWeight: editorMode === "visual" ? 600 : 400
-                          }}
-                        >
-                          Visual
-                        </button>
-                      </div>
-                    )}
-                    <button 
-                      className="action-icon-btn" 
-                      onClick={() => setSplitActive(!splitActive)}
-                      title="Editor aufteilen (Split Editor)"
-                      style={{ color: splitActive ? "var(--accent-indigo)" : "var(--text-secondary)" }}
+                  <div className="editor-actions" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px', height: '100%', padding: '0 12px', backgroundColor: 'var(--bg-sidebar)', borderLeft: '1px solid var(--border-color)' }}>
+                    <div style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: '6px', overflow: 'hidden', height: '24px' }}>
+                      <button
+                        onClick={() => setStakeholderEditVisual(false)}
+                        style={{
+                          background: !stakeholderEditVisual ? 'var(--accent-indigo)' : 'transparent',
+                          color: !stakeholderEditVisual ? 'white' : 'var(--text-secondary)',
+                          border: 'none',
+                          padding: '2px 10px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {language === 'en' ? 'Wiki Reader' : 'Wiki-Ansicht'}
+                      </button>
+                      <button
+                        onClick={() => setStakeholderEditVisual(true)}
+                        style={{
+                          background: stakeholderEditVisual ? 'var(--accent-indigo)' : 'transparent',
+                          color: stakeholderEditVisual ? 'white' : 'var(--text-secondary)',
+                          border: 'none',
+                          padding: '2px 10px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {language === 'en' ? 'Visual Form' : 'Visuell bearbeiten'}
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => { setActivePanel("pm"); setPmSubTab("scrum"); }}
+                      style={{
+                        backgroundColor: 'rgba(59, 130, 246, 0.14)',
+                        border: '1px solid rgba(59, 130, 246, 0.35)',
+                        color: 'var(--accent-blue)',
+                        borderRadius: '6px',
+                        padding: '3px 10px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px'
+                      }}
                     >
-                      <Split size={16} />
+                      <Calendar size={12} />
+                      {language === 'en' ? 'Jira Board' : 'Jira-Board'}
                     </button>
-                    <button 
-                      className="action-icon-btn" 
-                      onClick={() => setShowPreview(!showPreview)}
-                      title="Toggle Live-Vorschau"
-                      style={{ color: showPreview ? "var(--accent-indigo)" : "var(--text-secondary)" }}
-                    >
-                      <Eye size={16} />
+                    <button className="action-icon-btn" onClick={() => setShowExportModal(true)} title={language === 'en' ? 'Export Document' : 'Dokument exportieren'}>
+                      <FileDown size={16} />
                     </button>
-                    <button className="action-icon-btn" onClick={() => setShowExportModal(true)} title="Dokument exportieren"><FileDown size={16} /></button>
                   </div>
                 </div>
 
-                {/* Editor A Content */}
-                <div className="editor-pane" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-                  {editorMode === "code" ? (
-                    <>
-                      {/* Editor Toolbar */}
-                      <div className="editor-toolbar">
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("todo")} title="Aufgabe / Checkliste">
-                          <CheckSquare size={14} />
-                        </button>
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("table")} title="Tabelle einfügen">
-                          <TableIcon size={14} />
-                        </button>
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("mermaid")} title="Mermaid UML Diagramm">
-                          <CodeIcon size={14} />
-                        </button>
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("drawio")} title="Draw.io Diagramm einfügen">
-                          <Box size={14} style={{ color: 'var(--accent-indigo)' }} />
-                        </button>
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("adr")} title="ADR Architektur-Vorlage">
-                          <Sparkles size={14} />
-                        </button>
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("roadmap-item")} title="Roadmap-Meilenstein Block">
-                          <Calendar size={14} />
-                        </button>
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("reference")} title="Referenz aus anderem Dokument einbetten (@[pfad#L1-L5])">
-                          <FileText size={14} style={{ color: 'var(--accent-indigo)' }} />
-                        </button>
+                {stakeholderEditVisual ? (
+                  <div className="visual-editor-wrapper" style={{ flex: 1, overflowY: 'auto', padding: '24px', backgroundColor: 'var(--bg-editor)' }}>
+                    {renderVisualEditor()}
+                  </div>
+                ) : (
+                  <div className="preview-container markdown-body" style={{ maxWidth: '960px', width: '100%', margin: '0 auto', padding: '32px 40px' }}>
+                    {parseMarkdown(activeFile.content)}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Split Editor Pane Container (Developer & Scrum Modes) */
+              <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+                
+                {/* Left Panel: Editor A */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: splitActive ? '1px solid var(--border-color)' : 'none', minWidth: 0 }}>
+                  {/* Tab Bar A */}
+                  <div className="editor-tabs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', overflow: 'hidden', position: 'relative' }}>
+                    {/* Scrollable Tabs List */}
+                    <div style={{ display: 'flex', overflowX: 'auto', flex: 1, height: '100%', scrollbarWidth: 'none' }}>
+                      {openTabs.map(tabPath => {
+                        const tabFile = files.find(f => f.path === tabPath);
+                        return (
+                          <div 
+                            key={tabPath} 
+                            className={`editor-tab ${activeFilePath === tabPath ? "active" : ""} ${activeEditorPane === 'A' && activeFilePath === tabPath ? "pane-focused" : ""}`}
+                            onClick={() => { setActiveFilePath(tabPath); setActiveEditorPane('A'); }}
+                          >
+                            <FileText size={12} />
+                            <span>{tabFile?.name}</span>
+                            {modifiedFiles[tabPath] && (
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--accent-yellow)' }}></span>
+                            )}
+                            <span className="tab-close" onClick={(e) => handleCloseTab(e, tabPath)}><X size={10} /></span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Editor A Actions */}
+                    <div className="editor-actions" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', height: '100%', padding: '0 12px', backgroundColor: 'var(--bg-sidebar)', borderLeft: '1px solid var(--border-color)' }}>
+                      {activeFilePath.endsWith(".md") && (
+                        <div className="editor-mode-toggle" style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: '6px', overflow: 'hidden', height: '24px', marginRight: '8px' }}>
+                          <button 
+                            className={`mode-btn ${editorMode === "code" ? "active" : ""}`}
+                            onClick={() => setEditorMode("code")}
+                            style={{
+                              background: editorMode === "code" ? 'var(--accent-indigo)' : 'transparent',
+                              color: editorMode === "code" ? 'white' : 'var(--text-secondary)',
+                              border: 'none',
+                              padding: '2px 8px',
+                              fontSize: '11px',
+                              cursor: 'pointer',
+                              fontWeight: editorMode === "code" ? 600 : 400
+                            }}
+                          >
+                            Code
+                          </button>
+                          <button 
+                            className={`mode-btn ${editorMode === "visual" ? "active" : ""}`}
+                            onClick={() => setEditorMode("visual")}
+                            style={{
+                              background: editorMode === "visual" ? 'var(--accent-indigo)' : 'transparent',
+                              color: editorMode === "visual" ? 'white' : 'var(--text-secondary)',
+                              border: 'none',
+                              padding: '2px 8px',
+                              fontSize: '11px',
+                              cursor: 'pointer',
+                              fontWeight: editorMode === "visual" ? 600 : 400
+                            }}
+                          >
+                            Visual
+                          </button>
+                        </div>
+                      )}
+                      <button 
+                        className="action-icon-btn" 
+                        onClick={() => setSplitActive(!splitActive)}
+                        title="Editor aufteilen (Split Editor)"
+                        style={{ color: splitActive ? "var(--accent-indigo)" : "var(--text-secondary)" }}
+                      >
+                        <Split size={16} />
+                      </button>
+                      <button 
+                        className="action-icon-btn" 
+                        onClick={() => setShowPreview(!showPreview)}
+                        title="Toggle Live-Vorschau"
+                        style={{ color: showPreview ? "var(--accent-indigo)" : "var(--text-secondary)" }}
+                      >
+                        <Eye size={16} />
+                      </button>
+                      <button className="action-icon-btn" onClick={() => setShowExportModal(true)} title="Dokument exportieren"><FileDown size={16} /></button>
+                    </div>
+                  </div>
+
+                  {/* Editor A Content */}
+                  <div className="editor-pane" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+                    {editorMode === "code" ? (
+                      <>
+                        {/* Editor Toolbar */}
+                        <div className="editor-toolbar">
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("todo")} title="Aufgabe / Checkliste">
+                            <CheckSquare size={14} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("table")} title="Tabelle einfügen">
+                            <TableIcon size={14} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("query")} title="Live Query Macro (Jira/ADR/Pages Tabelle) einfügen">
+                            <Database size={14} style={{ color: 'var(--accent-green)' }} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("mermaid")} title="Mermaid UML Diagramm">
+                            <CodeIcon size={14} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("drawio")} title="Draw.io Diagramm einfügen">
+                            <Box size={14} style={{ color: 'var(--accent-indigo)' }} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("adr")} title="ADR Architektur-Vorlage">
+                            <Sparkles size={14} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("roadmap-item")} title="Roadmap-Meilenstein Block">
+                            <Calendar size={14} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("reference")} title="Referenz aus anderem Dokument einbetten (@[pfad#L1-L5])">
+                            <FileText size={14} style={{ color: 'var(--accent-indigo)' }} />
+                          </button>
+                          
+                          <div className="toolbar-separator"></div>
+                          
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("bold")} title="Fett markieren">
+                            <Bold size={14} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("italic")} title="Kursiv markieren">
+                            <Italic size={14} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("link")} title="Link einfügen">
+                            <Link size={14} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("image")} title="Bild einfügen (oder Screenshot per Ctrl+V / Drag & Drop)">
+                            <ImageIcon size={14} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("bullet-list")} title="Aufzählungliste">
+                            <List size={14} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("ordered-list")} title="Nummerierte Liste">
+                            <ListOrdered size={14} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("code-block")} title="Codeblock einfügen">
+                            <CodeIcon size={14} style={{ opacity: 0.8 }} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("quote")} title="Zitat-Block">
+                            <Quote size={14} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("horizontal-rule")} title="Trennlinie einfügen">
+                            <Minus size={14} />
+                          </button>
+                          <button className="action-icon-btn" onClick={() => insertTemplateBlock("details")} title="Dropdown-Details Block">
+                            <ChevronDown size={14} />
+                          </button>
+                          <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--border-color)', margin: '0 4px' }} />
+                          <button 
+                            className="action-icon-btn" 
+                            onClick={() => setShowCheatsheetModal(true)} 
+                            title="Syntax-Hilfe & Cheatsheet öffnen (Ctrl+/)"
+                            style={{ color: 'var(--accent-indigo)' }}
+                          >
+                            <HelpCircle size={14} />
+                          </button>
+                        </div>
                         
-                        <div className="toolbar-separator"></div>
-                        
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("bold")} title="Fett markieren">
-                          <Bold size={14} />
-                        </button>
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("italic")} title="Kursiv markieren">
-                          <Italic size={14} />
-                        </button>
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("link")} title="Link einfügen">
-                          <Link size={14} />
-                        </button>
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("image")} title="Bild einfügen">
-                          <ImageIcon size={14} />
-                        </button>
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("bullet-list")} title="Aufzählungliste">
-                          <List size={14} />
-                        </button>
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("ordered-list")} title="Nummerierte Liste">
-                          <ListOrdered size={14} />
-                        </button>
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("code-block")} title="Codeblock einfügen">
-                          <CodeIcon size={14} style={{ opacity: 0.8 }} />
-                        </button>
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("quote")} title="Zitat-Block">
-                          <Quote size={14} />
-                        </button>
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("horizontal-rule")} title="Trennlinie einfügen">
-                          <Minus size={14} />
-                        </button>
-                        <button className="action-icon-btn" onClick={() => insertTemplateBlock("details")} title="Dropdown-Details Block">
-                          <ChevronDown size={14} />
-                        </button>
-                        <div style={{ width: '1px', height: '16px', backgroundColor: 'var(--border-color)', margin: '0 4px' }} />
-                        <button 
-                          className="action-icon-btn" 
-                          onClick={() => setShowCheatsheetModal(true)} 
-                          title="Syntax-Hilfe & Cheatsheet öffnen (Ctrl+/)"
-                          style={{ color: 'var(--accent-indigo)' }}
-                        >
-                          <HelpCircle size={14} />
-                        </button>
+                        <div className="monaco-wrapper" style={{ flex: 1, minHeight: 0 }}>
+                          <Editor
+                            height="100%"
+                            language="markdown"
+                            theme="vs-dark"
+                            value={activeFile.content}
+                            onChange={handleEditorChange}
+                            onMount={(editor, monaco) => {
+                              editorRef.current = editor;
+                              monacoRef.current = monaco;
+                              setEditorAInstance(editor);
+                              editor.onDidFocusEditorText(() => setActiveEditorPane('A'));
+                              registerCustomCompletions(monaco);
+                            }}
+                            options={{
+                              minimap: { enabled: false },
+                              fontSize: 13,
+                              lineNumbers: "on",
+                              wordWrap: "on",
+                              fontFamily: "var(--font-mono)",
+                              automaticLayout: true,
+                            }}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="visual-editor-wrapper" style={{ flex: 1, overflowY: 'auto', padding: '20px', backgroundColor: 'var(--bg-editor)' }}>
+                        {renderVisualEditor()}
                       </div>
-                      
+                    )}
+
+                    {showProblemsPanel && (
+                      <ProblemsPanel 
+                        diagnostics={diagnostics}
+                        onSelectProblem={(filePath, line) => {
+                          handleOpenFile(filePath);
+                          setTimeout(() => {
+                            if (editorRef.current) {
+                              editorRef.current.revealLineInCenter(line);
+                              editorRef.current.setPosition({ lineNumber: line, column: 1 });
+                              editorRef.current.focus();
+                            }
+                          }, 100);
+                        }}
+                        onClose={() => setShowProblemsPanel(false)}
+                        language={language}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Panel: Editor B */}
+                {splitActive && (
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--border-color)', minWidth: 0 }}>
+                    {/* Tab Bar B */}
+                    <div className="editor-tabs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', overflow: 'hidden', position: 'relative' }}>
+                      <div style={{ display: 'flex', overflowX: 'auto', flex: 1, height: '100%', scrollbarWidth: 'none' }}>
+                        {openTabsB.map(tabPath => {
+                          const tabFile = files.find(f => f.path === tabPath);
+                          return (
+                            <div 
+                              key={tabPath} 
+                              className={`editor-tab ${activeFilePathB === tabPath ? "active" : ""} ${activeEditorPane === 'B' && activeFilePathB === tabPath ? "pane-focused" : ""}`}
+                              onClick={() => { setActiveFilePathB(tabPath); setActiveEditorPane('B'); }}
+                            >
+                              <FileText size={12} />
+                              <span>{tabFile?.name}</span>
+                              {modifiedFiles[tabPath] && (
+                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--accent-yellow)' }}></span>
+                              )}
+                              <span className="tab-close" onClick={(e) => handleCloseTabB(e, tabPath)}><X size={10} /></span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Editor B Content */}
+                    <div className="editor-pane" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
                       <div className="monaco-wrapper" style={{ flex: 1, minHeight: 0 }}>
                         <Editor
                           height="100%"
                           language="markdown"
                           theme="vs-dark"
-                          value={activeFile.content}
-                          onChange={handleEditorChange}
+                          value={files.find(f => f.path === activeFilePathB)?.content || ""}
+                          onChange={(val) => {
+                            if (val === undefined) return;
+                            setFiles(prev => prev.map(f => f.path === activeFilePathB ? { ...f, content: val } : f));
+                            setModifiedFiles(prev => ({ ...prev, [activeFilePathB]: true }));
+                          }}
                           onMount={(editor, monaco) => {
-                            editorRef.current = editor;
-                            monacoRef.current = monaco;
-                            setEditorAInstance(editor);
-                            editor.onDidFocusEditorText(() => setActiveEditorPane('A'));
+                            editorRefB.current = editor;
+                            monacoRefB.current = monaco;
+                            setEditorBInstance(editor);
+                            editor.onDidFocusEditorText(() => setActiveEditorPane('B'));
                             registerCustomCompletions(monaco);
                           }}
                           options={{
@@ -5791,106 +6831,24 @@ ${impediments.map(i => `* [ ] BLOCKED: ${i.title} (${i.assignee})`).join("\n") |
                           }}
                         />
                       </div>
-                    </>
-                  ) : (
-                    <div className="visual-editor-wrapper" style={{ flex: 1, overflowY: 'auto', padding: '20px', backgroundColor: 'var(--bg-editor)' }}>
-                      {renderVisualEditor()}
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  {showProblemsPanel && (
-                    <ProblemsPanel 
-                      diagnostics={diagnostics}
-                      onSelectProblem={(filePath, line) => {
-                        handleOpenFile(filePath);
-                        setTimeout(() => {
-                          if (editorRef.current) {
-                            editorRef.current.revealLineInCenter(line);
-                            editorRef.current.setPosition({ lineNumber: line, column: 1 });
-                            editorRef.current.focus();
-                          }
-                        }, 100);
-                      }}
-                      onClose={() => setShowProblemsPanel(false)}
-                      language={language}
-                    />
-                  )}
-                </div>
+                {/* Rightmost Panel: Preview */}
+                {showPreview && !splitActive && (
+                  <div className="preview-pane" style={{ width: '45%' }}>
+                    <div className="panel-header" style={{ height: '36px', minHeight: '36px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-panel)' }}>
+                      <span>{language === 'en' ? 'Live Preview' : 'Echtzeit-Vorschau'}</span>
+                      <span className="logo-badge" style={{ fontSize: '8px', backgroundColor: 'rgba(16, 185, 129, 0.1)' }}>HTML + Query Macro</span>
+                    </div>
+                    <div className="preview-container markdown-body">
+                      {parseMarkdown(activeFile.content)}
+                    </div>
+                  </div>
+                )}
               </div>
-
-              {/* Right Panel: Editor B */}
-              {splitActive && (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--border-color)', minWidth: 0 }}>
-                  {/* Tab Bar B */}
-                  <div className="editor-tabs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', overflow: 'hidden', position: 'relative' }}>
-                    <div style={{ display: 'flex', overflowX: 'auto', flex: 1, height: '100%', scrollbarWidth: 'none' }}>
-                      {openTabsB.map(tabPath => {
-                        const tabFile = files.find(f => f.path === tabPath);
-                        return (
-                          <div 
-                            key={tabPath} 
-                            className={`editor-tab ${activeFilePathB === tabPath ? "active" : ""} ${activeEditorPane === 'B' && activeFilePathB === tabPath ? "pane-focused" : ""}`}
-                            onClick={() => { setActiveFilePathB(tabPath); setActiveEditorPane('B'); }}
-                          >
-                            <FileText size={12} />
-                            <span>{tabFile?.name}</span>
-                            {modifiedFiles[tabPath] && (
-                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--accent-yellow)' }}></span>
-                            )}
-                            <span className="tab-close" onClick={(e) => handleCloseTabB(e, tabPath)}><X size={10} /></span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Editor B Content */}
-                  <div className="editor-pane" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-                    <div className="monaco-wrapper" style={{ flex: 1, minHeight: 0 }}>
-                      <Editor
-                        height="100%"
-                        language="markdown"
-                        theme="vs-dark"
-                        value={files.find(f => f.path === activeFilePathB)?.content || ""}
-                        onChange={(val) => {
-                          if (val === undefined) return;
-                          setFiles(prev => prev.map(f => f.path === activeFilePathB ? { ...f, content: val } : f));
-                          setModifiedFiles(prev => ({ ...prev, [activeFilePathB]: true }));
-                        }}
-                        onMount={(editor, monaco) => {
-                          editorRefB.current = editor;
-                          monacoRefB.current = monaco;
-                          setEditorBInstance(editor);
-                          editor.onDidFocusEditorText(() => setActiveEditorPane('B'));
-                          registerCustomCompletions(monaco);
-                        }}
-                        options={{
-                          minimap: { enabled: false },
-                          fontSize: 13,
-                          lineNumbers: "on",
-                          wordWrap: "on",
-                          fontFamily: "var(--font-mono)",
-                          automaticLayout: true,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Rightmost Panel: Preview */}
-              {showPreview && !splitActive && (
-                <div className="preview-pane" style={{ width: '45%' }}>
-                  <div className="panel-header" style={{ height: '36px', minHeight: '36px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-panel)' }}>
-                    <span>Echtzeit-Vorschau</span>
-                    <span className="logo-badge" style={{ fontSize: '8px', backgroundColor: 'rgba(16, 185, 129, 0.1)' }}>HTML Rendered</span>
-                  </div>
-                  <div className="preview-container markdown-body">
-                    {parseMarkdown(activeFile.content)}
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
           </div>
         )}
       </div>
@@ -6002,7 +6960,7 @@ ${impediments.map(i => `* [ ] BLOCKED: ${i.title} (${i.assignee})`).join("\n") |
                 value={newFileCategory}
                 onChange={(e) => setNewFileCategory(e.target.value)}
               >
-                {categories.map(cat => (
+                {categories.filter(cat => !cat.startsWith(".")).map(cat => (
                   <option key={cat} value={cat}>{cat}</option>
                 ))}
               </select>
@@ -6045,7 +7003,7 @@ ${impediments.map(i => `* [ ] BLOCKED: ${i.title} (${i.assignee})`).join("\n") |
                 onChange={(e) => setNewFolderParent(e.target.value)}
               >
                 <option value="none">{language === 'en' ? "None (Root folder)" : "Kein (Hauptordner)"}</option>
-                {categories.map(cat => (
+                {categories.filter(cat => !cat.startsWith(".")).map(cat => (
                   <option key={cat} value={cat}>{cat}</option>
                 ))}
               </select>
@@ -6074,66 +7032,40 @@ ${impediments.map(i => `* [ ] BLOCKED: ${i.title} (${i.assignee})`).join("\n") |
       {/* App Status Bar */}
       <footer className="app-statusbar">
         <div className="statusbar-left">
-          {/* Branch selector dropdown */}
-          <div className="statusbar-item" style={{ position: 'relative', cursor: 'pointer' }} onClick={() => setShowBranchMenu(!showBranchMenu)}>
-            <GitBranch size={11} />
-            <span style={{ fontWeight: 600 }}>{activeBranch}</span>
-            <ChevronDown size={10} style={{ marginLeft: '4px' }} />
-            
-            {showBranchMenu && (
-              <div 
-                style={{ 
-                  position: 'absolute', 
-                  bottom: '22px', 
-                  left: 0, 
-                  backgroundColor: 'var(--bg-panel)', 
-                  border: '1px solid var(--border-color)', 
-                  borderRadius: '4px',
-                  boxShadow: 'var(--shadow-lg)',
-                  zIndex: 2000,
-                  width: '180px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  padding: '4px 0'
+          {roleMode !== "stakeholder" ? (
+            <>
+              {/* GitOps Branch Manager Trigger */}
+              <div
+                className="statusbar-item"
+                style={{ cursor: 'pointer' }}
+                onClick={() => {
+                  setPendingBranchName("");
+                  setPendingBranchIssue(null);
+                  setIsGitBranchModalOpen(true);
                 }}
-                onClick={(e) => e.stopPropagation()}
+                title={language === "en" ? "Open GitOps Branch Manager" : "GitOps Branch-Verwaltung öffnen"}
               >
-                <div style={{ padding: '6px 12px', fontSize: '10px', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', fontWeight: 'bold' }}>Branches</div>
-                {Object.keys(branchFiles).map(b => (
-                  <div 
-                    key={b}
-                    onClick={() => { handleSwitchBranch(b); setShowBranchMenu(false); }}
-                    style={{ 
-                      padding: '6px 12px', 
-                      fontSize: '11px',
-                      color: b === activeBranch ? 'var(--accent-indigo)' : 'var(--text-primary)',
-                      backgroundColor: b === activeBranch ? 'rgba(99,102,241,0.08)' : 'transparent',
-                      fontWeight: b === activeBranch ? 'bold' : 'normal'
-                    }}
-                    className="branch-menu-item"
-                  >
-                    {b}
-                  </div>
-                ))}
-                <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
-                <div 
-                  onClick={() => { handleCreateBranch(); setShowBranchMenu(false); }}
-                  style={{ padding: '6px 12px', fontSize: '11px', color: 'var(--text-secondary)' }}
-                  className="branch-menu-item"
-                >
-                  + Neuer Branch...
-                </div>
+                <GitBranch size={11} />
+                <span style={{ fontWeight: 600 }}>{activeBranch}</span>
+                <ChevronDown size={10} style={{ marginLeft: '4px' }} />
               </div>
-            )}
-          </div>
 
-          {/* Diagnostics warning/error count toggle panel */}
-          <div className="statusbar-item" onClick={() => setShowProblemsPanel(!showProblemsPanel)} style={{ cursor: 'pointer' }} title="Probleme ein-/ausblenden">
-            <AlertCircle size={11} style={{ color: diagnostics.filter(d => d.severity === "error").length > 0 ? "var(--accent-red)" : "inherit" }} />
-            <span style={{ marginLeft: '4px' }}>{diagnostics.filter(d => d.severity === "error").length}</span>
-            <AlertTriangle size={11} style={{ color: diagnostics.filter(d => d.severity === "warning").length > 0 ? "var(--accent-yellow)" : "inherit", marginLeft: '8px' }} />
-            <span style={{ marginLeft: '4px' }}>{diagnostics.filter(d => d.severity === "warning").length}</span>
-          </div>
+              {/* Diagnostics warning/error count toggle panel */}
+              <div className="statusbar-item" onClick={() => setShowProblemsPanel(!showProblemsPanel)} style={{ cursor: 'pointer' }} title="Probleme ein-/ausblenden">
+                <AlertCircle size={11} style={{ color: diagnostics.filter(d => d.severity === "error").length > 0 ? "var(--accent-red)" : "inherit" }} />
+                <span style={{ marginLeft: '4px' }}>{diagnostics.filter(d => d.severity === "error").length}</span>
+                <AlertTriangle size={11} style={{ color: diagnostics.filter(d => d.severity === "warning").length > 0 ? "var(--accent-yellow)" : "inherit", marginLeft: '8px' }} />
+                <span style={{ marginLeft: '4px' }}>{diagnostics.filter(d => d.severity === "warning").length}</span>
+              </div>
+            </>
+          ) : (
+            <div className="statusbar-item">
+              <Sparkles size={11} style={{ color: 'var(--accent-indigo)' }} />
+              <span style={{ fontWeight: 600 }}>
+                {language === "en" ? "Stakeholder & PM Clean Mode (Confluence / Jira)" : "Stakeholder & PM Clean Mode (Confluence / Jira)"}
+              </span>
+            </div>
+          )}
 
           <div className="statusbar-item" title={yjsUrl}>
             <span>Yjs Sync: </span>
@@ -6155,11 +7087,202 @@ ${impediments.map(i => `* [ ] BLOCKED: ${i.title} (${i.assignee})`).join("\n") |
         </div>
 
         <div className="statusbar-right">
-          <span>Zeilen: {activeFile.content.split('\n').length}</span>
-          <span>UTF-8</span>
-          <span>Markdown</span>
+          <span
+            className="statusbar-item"
+            onClick={() => setIsCommandPaletteOpen(true)}
+            title="Command Palette (Ctrl+K)"
+          >
+            <Search size={10} />
+            <span>Ctrl+K</span>
+          </span>
+          {roleMode !== "stakeholder" && (
+            <>
+              <span>{language === "en" ? "Lines:" : "Zeilen:"} {activeFile.content.split('\n').length}</span>
+              <span>UTF-8</span>
+              <span>Markdown</span>
+            </>
+          )}
         </div>
       </footer>
+
+      {/* Global Ctrl+K Command Palette / Omnibox */}
+      <CommandPaletteModal
+        isOpen={isCommandPaletteOpen}
+        onOpen={() => setIsCommandPaletteOpen(true)}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        files={files}
+        onSelectFile={(filePath) => {
+          handleOpenFile(filePath);
+          setActivePanel("explorer");
+        }}
+        language={language}
+        roleMode={roleMode}
+        enableGlobalShortcut={true}
+        onCreateIssue={() => setIsQuickCreateIssueOpen(true)}
+        onOpenScrumBoard={() => {
+          setActivePanel("pm");
+          setPmSubTab("scrum");
+        }}
+        onOpenImportModal={() => setIsImportModalOpen(true)}
+        onOpenGitBranchModal={() => {
+          setPendingBranchName("");
+          setPendingBranchIssue(null);
+          setIsGitBranchModalOpen(true);
+        }}
+        onOpenTemplateGallery={() => setIsTemplateGalleryOpen(true)}
+        onExportDocx={() => triggerDownload("docx", "single")}
+        onToggleStakeholderMode={() =>
+          handleRoleModeChange(roleMode === "stakeholder" ? "developer" : "stakeholder")
+        }
+      />
+
+      {/* Atlassian Jira (CSV/JSON/ADF) & Confluence (HTML) Importer */}
+      <AtlassianImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        existingFiles={files}
+        language={language}
+        onImportFiles={(importedFiles) => {
+          handleUpsertMultipleFiles(importedFiles);
+          const firstImported = importedFiles[0];
+          if (firstImported) {
+            if (firstImported.path.startsWith("issues/")) {
+              setActivePanel("pm");
+              setPmSubTab("scrum");
+            } else {
+              handleOpenFile(firstImported.path);
+              setActivePanel("explorer");
+            }
+          }
+        }}
+      />
+
+      {/* GitOps Branch Manager Modal (wired to Issue-to-Branch creation) */}
+      <GitBranchModal
+        isOpen={isGitBranchModalOpen}
+        onClose={() => {
+          setIsGitBranchModalOpen(false);
+          setPendingBranchName("");
+          setPendingBranchIssue(null);
+        }}
+        isTauri={isTauri}
+        tauriRootFolder={tauriRootFolder || null}
+        initialNewBranchName={pendingBranchName}
+        currentBranch={activeBranch}
+        activeBranch={activeBranch}
+        language={language}
+        onBranchChanged={async (nextBranch) => {
+          setActiveBranch(nextBranch);
+          if (pendingBranchIssue) {
+            const linkedIssue: AgileIssue = {
+              ...pendingBranchIssue,
+              branch: nextBranch,
+              updatedAt: new Date().toISOString(),
+            };
+            await handleUpsertWorkspaceFile(serializeIssueToMarkdown(linkedIssue));
+            setPendingBranchIssue(linkedIssue);
+          } else if (isTauri && tauriRootFolder) {
+            await rescanTauriFiles(tauriRootFolder);
+            await syncGitStatus(tauriRootFolder);
+          }
+        }}
+      />
+
+      {/* Confluence Inline Review Comments Drawer */}
+      {activeFile && (
+        <InlineCommentsDrawer
+          isOpen={isCommentsDrawerOpen}
+          activeFile={activeFile}
+          files={files}
+          currentUser={currentUser}
+          selectedQuote={selectedCommentQuote}
+          selectedLineNumber={selectedCommentLine}
+          language={language}
+          onClose={() => setIsCommentsDrawerOpen(false)}
+          onUpsertFile={handleUpsertWorkspaceFile}
+          onJumpToLine={(lineNumber) => {
+            if (editorRef.current && roleMode !== "stakeholder") {
+              setEditorMode("code");
+              setTimeout(() => {
+                if (editorRef.current) {
+                  editorRef.current.revealLineInCenter(lineNumber);
+                  editorRef.current.setPosition({ lineNumber, column: 1 });
+                  editorRef.current.focus();
+                }
+              }, 80);
+            }
+          }}
+        />
+      )}
+
+      {/* Confluence Git Page History & Time Machine Modal */}
+      {activeFile && (
+        <PageHistoryModal
+          isOpen={isPageHistoryOpen}
+          activeFile={activeFile}
+          isTauri={isTauri}
+          tauriRootFolder={tauriRootFolder}
+          currentUser={currentUser}
+          language={language}
+          onClose={() => setIsPageHistoryOpen(false)}
+          onRestoreVersion={(restoredContent) => {
+            handleUpsertWorkspaceFile({ ...activeFile, content: restoredContent });
+            setIsPageHistoryOpen(false);
+          }}
+        />
+      )}
+
+      {/* Confluence Template Gallery Modal */}
+      <TemplateGalleryModal
+        isOpen={isTemplateGalleryOpen}
+        currentUser={currentUser}
+        existingFiles={files}
+        language={language}
+        onClose={() => setIsTemplateGalleryOpen(false)}
+        onCreateFile={(newDoc) => {
+          handleUpsertWorkspaceFile(newDoc);
+          handleOpenFile(newDoc.path);
+          setActivePanel("explorer");
+          setIsTemplateGalleryOpen(false);
+        }}
+      />
+
+      {/* Global Quick-Create Jira Issue Drawer (triggered from Ctrl+K or Sidebar) */}
+      {isQuickCreateIssueOpen && (() => {
+        const allIssuesNow = extractAllIssues(files);
+        const epicsNow = allIssuesNow.filter(i => i.type === "epic");
+        const sprintsNow = parseSprints(files);
+        const activeSprintNow = sprintsNow.find(s => s.state === "active");
+        const draftIssue = createBlankIssue(files, currentUser, {
+          sprint: activeSprintNow?.id || "",
+        });
+        return (
+          <IssueDrawer
+            issue={draftIssue}
+            isOpen={isQuickCreateIssueOpen}
+            isNew={true}
+            epics={epicsNow}
+            sprints={sprintsNow}
+            allIssues={allIssuesNow}
+            currentUser={currentUser}
+            language={language}
+            onClose={() => setIsQuickCreateIssueOpen(false)}
+            onSave={(createdIssue) => {
+              handleUpsertWorkspaceFile(serializeIssueToMarkdown(createdIssue));
+              setIsQuickCreateIssueOpen(false);
+            }}
+            onOpenMarkdownFile={(filePath) => {
+              handleOpenFile(filePath);
+              setActivePanel("explorer");
+              setIsQuickCreateIssueOpen(false);
+            }}
+            onCreateBranch={(iss, branchName) => {
+              setIsQuickCreateIssueOpen(false);
+              handleCreateBranchFromIssue(iss, branchName);
+            }}
+          />
+        );
+      })()}
 
       {/* Visual DiffViewer overlay dialog */}
       {diffTargetFile && (

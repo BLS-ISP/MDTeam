@@ -362,6 +362,12 @@ export default function DocumentGraph({ files, onSelectNode, language = "de" }: 
         return "#6366f1"; // Indigo
       case "adrs":
         return "#10b981"; // Emerald
+      case "issues":
+        return "#3b82f6"; // Blue (Jira Issues)
+      case "sprints":
+        return "#06b6d4"; // Cyan (Sprints)
+      case "wiki":
+        return "#f97316"; // Orange (Confluence Wiki)
       case "management":
         return "#eab308"; // Amber
       case "meetings":
@@ -399,7 +405,7 @@ export default function DocumentGraph({ files, onSelectNode, language = "de" }: 
         </div>
 
         {/* Legend */}
-        <div style={{ display: 'flex', gap: '12px', fontSize: '10px' }}>
+        <div style={{ display: 'flex', gap: '12px', fontSize: '10px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#6366f1' }}></span>
             <span>arc42</span>
@@ -407,6 +413,18 @@ export default function DocumentGraph({ files, onSelectNode, language = "de" }: 
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
             <span>ADRs</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#3b82f6' }}></span>
+            <span>Issues</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#06b6d4' }}></span>
+            <span>Sprints</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#f97316' }}></span>
+            <span>Wiki</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#eab308' }}></span>
@@ -457,10 +475,16 @@ export default function DocumentGraph({ files, onSelectNode, language = "de" }: 
           {/* Arrow definitions for directed edges */}
           <defs>
             <marker id="arrow-link" markerWidth="8" markerHeight="8" refX="21" refY="4" orient="auto">
-              <path d="M0,1 L8,4 L0,7 Z" fill="rgba(255,255,255,0.15)" />
+              <path d="M0,1 L8,4 L0,7 Z" fill="rgba(255,255,255,0.18)" />
             </marker>
             <marker id="arrow-transclude" markerWidth="8" markerHeight="8" refX="21" refY="4" orient="auto">
               <path d="M0,1 L8,4 L0,7 Z" fill="var(--accent-indigo)" />
+            </marker>
+            <marker id="arrow-epic" markerWidth="8" markerHeight="8" refX="21" refY="4" orient="auto">
+              <path d="M0,1 L8,4 L0,7 Z" fill="rgba(59, 130, 246, 0.65)" />
+            </marker>
+            <marker id="arrow-blocked" markerWidth="8" markerHeight="8" refX="21" refY="4" orient="auto">
+              <path d="M0,1 L8,4 L0,7 Z" fill="rgba(239, 68, 68, 0.8)" />
             </marker>
           </defs>
 
@@ -472,10 +496,27 @@ export default function DocumentGraph({ files, onSelectNode, language = "de" }: 
               const posB = positions[edge.target];
               if (!posA || !posB) return null;
 
-              const isTransclusion = edge.type === "transclusion";
-              const strokeColor = isTransclusion ? "rgba(99, 102, 241, 0.4)" : "rgba(255, 255, 255, 0.1)";
-              const strokeDash = isTransclusion ? "4 4" : "none";
-              const marker = isTransclusion ? "url(#arrow-transclude)" : "url(#arrow-link)";
+              let strokeColor = "rgba(255, 255, 255, 0.14)";
+              let strokeDash = "none";
+              let marker = "url(#arrow-link)";
+              let strokeWidth = 1.5;
+
+              if (edge.type === "transclusion") {
+                strokeColor = "rgba(99, 102, 241, 0.45)";
+                strokeDash = "4 4";
+                marker = "url(#arrow-transclude)";
+                strokeWidth = 2;
+              } else if (edge.type === "epic") {
+                strokeColor = "rgba(59, 130, 246, 0.45)";
+                strokeDash = "none";
+                marker = "url(#arrow-epic)";
+                strokeWidth = 2;
+              } else if (edge.type === "blocked_by") {
+                strokeColor = "rgba(239, 68, 68, 0.6)";
+                strokeDash = "3 3";
+                marker = "url(#arrow-blocked)";
+                strokeWidth = 2;
+              }
 
               return (
                 <line
@@ -485,7 +526,7 @@ export default function DocumentGraph({ files, onSelectNode, language = "de" }: 
                   x2={posB.x}
                   y2={posB.y}
                   stroke={strokeColor}
-                  strokeWidth={isTransclusion ? 2 : 1.5}
+                  strokeWidth={strokeWidth}
                   strokeDasharray={strokeDash}
                   markerEnd={marker}
                 />

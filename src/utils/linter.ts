@@ -13,9 +13,173 @@ interface WorkspaceFile {
   content: string;
 }
 
+interface ParsedIssueLintMeta {
+  filePath: string;
+  id: string;
+  type: string;
+  title: string;
+  status: string;
+  sprint: string;
+  assignee: string;
+  storyPoints: number;
+  blockedBy: string[];
+  startDate: string;
+  endDate: string;
+  lines: {
+    id: number;
+    title: number;
+    status: number;
+    assignee: number;
+    storyPoints: number;
+    blockedBy: number;
+    startDate: number;
+    endDate: number;
+  };
+}
+
+function extractYamlList(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "[]") return [];
+  const inner = trimmed.replace(/^\[|\]$/g, "");
+  return inner
+    .split(",")
+    .map(item => item.trim().replace(/^["']|["']$/g, "").trim())
+    .filter(Boolean);
+}
+
+function parseIssueLintMetadata(file: WorkspaceFile): ParsedIssueLintMeta | null {
+  if (!file.path.startsWith("issues/") || !file.path.endsWith(".md")) return null;
+  const rawLines = file.content.split(/\r?\n/);
+  if ((rawLines[0] || "").trim() !== "---") return null;
+
+  let endIdx = -1;
+  for (let i = 1; i < rawLines.length; i++) {
+    if (rawLines[i].trim() === "---") {
+      endIdx = i;
+      break;
+    }
+  }
+  if (endIdx === -1) return null;
+
+  const meta: ParsedIssueLintMeta = {
+    filePath: file.path,
+    id: "",
+    type: "task",
+    title: "",
+    status: "backlog",
+    sprint: "",
+    assignee: "",
+    storyPoints: 0,
+    blockedBy: [],
+    startDate: "",
+    endDate: "",
+    lines: {
+      id: 2,
+      title: 2,
+      status: 2,
+      assignee: 2,
+      storyPoints: 2,
+      blockedBy: 2,
+      startDate: 2,
+      endDate: 2,
+    },
+  };
+
+  for (let i = 1; i < endIdx; i++) {
+    const line = rawLines[i];
+    const lineNum = i + 1;
+    const kv = line.match(/^([a-zA-Z0-9_]+):\s*(.*)$/);
+    if (!kv) continue;
+    const key = kv[1].trim().toLowerCase();
+    const rawVal = kv[2].trim();
+    const cleanVal = rawVal.replace(/^["']|["']$/g, "").trim();
+
+    switch (key) {
+      case "id":
+        meta.id = cleanVal;
+        meta.lines.id = lineNum;
+        break;
+      case "type":
+        meta.type = cleanVal.toLowerCase();
+        break;
+      case "title":
+        meta.title = cleanVal;
+        meta.lines.title = lineNum;
+        break;
+      case "status":
+        meta.status = cleanVal.toLowerCase();
+        meta.lines.status = lineNum;
+        break;
+      case "sprint":
+        meta.sprint = cleanVal;
+        break;
+      case "assignee":
+        meta.assignee = cleanVal;
+        meta.lines.assignee = lineNum;
+        break;
+      case "story_points":
+        meta.storyPoints = parseFloat(cleanVal) || 0;
+        meta.lines.storyPoints = lineNum;
+        break;
+      case "blocked_by":
+        meta.blockedBy = extractYamlList(rawVal);
+        meta.lines.blockedBy = lineNum;
+        break;
+      case "start_date":
+        meta.startDate = cleanVal;
+        meta.lines.startDate = lineNum;
+        break;
+      case "end_date":
+        meta.endDate = cleanVal;
+        meta.lines.endDate = lineNum;
+        break;
+    }
+  }
+
+  if (!meta.id) {
+    meta.id = file.name.replace(/\.md$/i, "");
+  }
+
+  return meta;
+}
+
+function getActiveSprintIds(files: WorkspaceFile[]): Set<string> {
+  const activeIds = new Set<string>();
+  files.forEach(f => {
+    if (!f.path.startsWith("sprints/") || !f.path.endsWith(".md")) return;
+    const fm = f.content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (!fm) return;
+    let id = f.name.replace(/\.md$/i, "");
+    let state = "";
+    fm[1].split(/\r?\n/).forEach(l => {
+      const kv = l.match(/^([a-zA-Z0-9_]+):\s*(.*)$/);
+      if (!kv) return;
+      const k = kv[1].trim().toLowerCase();
+      const v = kv[2].trim().replace(/^["']|["']$/g, "").trim();
+      if (k === "id" && v) id = v;
+      if (k === "state") state = v.toLowerCase();
+    });
+    if (state === "active") {
+      activeIds.add(id.toLowerCase());
+    }
+  });
+  return activeIds;
+}
+
 export function lintWorkspaceFiles(files: WorkspaceFile[], lang: "de" | "en" = "de"): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const msg = (de: string, en: string) => lang === "de" ? de : en;
+
+  const parsedIssues: ParsedIssueLintMeta[] = [];
+  const issueById = new Map<string, ParsedIssueLintMeta>();
+  files.forEach(f => {
+    const meta = parseIssueLintMetadata(f);
+    if (meta) {
+      parsedIssues.push(meta);
+      issueById.set(meta.id.toUpperCase(), meta);
+    }
+  });
+  const activeSprintIds = getActiveSprintIds(files);
 
   files.forEach(file => {
     const lines = file.content.split("\n");
@@ -255,20 +419,25 @@ export function lintWorkspaceFiles(files: WorkspaceFile[], lang: "de" | "en" = "
     // 5. Validate Definition of Done (DoD) compliance
     if (file.path === "management/definition-of-done.md") {
       const backlogFile = files.find(f => f.path === "management/sprint-backlog.md");
-      if (backlogFile) {
-        const hasOpenTasks = backlogFile.content.includes("- [ ]") || backlogFile.content.includes("- [/]");
-        if (hasOpenTasks) {
-          diagnostics.push({
-            filePath: file.path,
-            line: 8,
-            severity: "warning",
-            message: msg(
-              "Definition of Done verletzt: Es gibt noch offene oder unfertige Aufgaben im Sprint-Backlog.",
-              "Definition of Done violated: There are still open or incomplete tasks in the sprint backlog."
-            ),
-            code: "DOD_OPEN_TASKS"
-          });
-        }
+      const hasLegacyOpenTasks = backlogFile
+        ? backlogFile.content.includes("- [ ]") || backlogFile.content.includes("- [/]")
+        : false;
+      const openSprintIssues = parsedIssues.filter(iss => {
+        const inActiveSprint = iss.sprint && activeSprintIds.has(iss.sprint.toLowerCase());
+        return (inActiveSprint || iss.status === "in-progress" || iss.status === "review") && iss.status !== "done";
+      });
+
+      if (hasLegacyOpenTasks || openSprintIssues.length > 0) {
+        diagnostics.push({
+          filePath: file.path,
+          line: 8,
+          severity: "warning",
+          message: msg(
+            `Definition of Done verletzt: Es gibt noch offene Sprint-Aufgaben (${openSprintIssues.length} Ticket(s) unter issues/*${hasLegacyOpenTasks ? " + Sprint-Backlog" : ""}).`,
+            `Definition of Done violated: There are still open sprint tasks (${openSprintIssues.length} issue(s) in issues/*${hasLegacyOpenTasks ? " + sprint backlog" : ""}).`
+          ),
+          code: "DOD_OPEN_TASKS"
+        });
       }
 
       const draftADRs = files.filter(f => f.path.startsWith("adrs/") && (f.content.includes("Vorgeschlagen") || f.content.includes("Entwurf") || f.content.toLowerCase().includes("proposed") || f.content.toLowerCase().includes("draft")));
@@ -297,6 +466,17 @@ export function lintWorkspaceFiles(files: WorkspaceFile[], lang: "de" | "en" = "
         }
       });
 
+      parsedIssues.forEach(iss => {
+        if (iss.status === "done") return;
+        const hasUnresolvedBlocker = iss.blockedBy.some(bId => {
+          const target = issueById.get(bId.toUpperCase());
+          return !target || target.status !== "done";
+        });
+        if (hasUnresolvedBlocker) {
+          blockerCount++;
+        }
+      });
+
       if (blockerCount > 0) {
         diagnostics.push({
           filePath: file.path,
@@ -313,51 +493,83 @@ export function lintWorkspaceFiles(files: WorkspaceFile[], lang: "de" | "en" = "
 
     // 6. Validate Definition of Ready (DoR) compliance
     if (file.path === "management/definition-of-ready.md") {
+      let missingAssigneesCount = 0;
+      let blockedTasksCount = 0;
+      let unestimatedSprintIssuesCount = 0;
+
       const backlogFile = files.find(f => f.path === "management/sprint-backlog.md");
       if (backlogFile) {
-        const lines = backlogFile.content.split("\n");
-        let missingAssigneesCount = 0;
-        let blockedTasksCount = 0;
-
-        lines.forEach(line => {
+        const bLines = backlogFile.content.split("\n");
+        bLines.forEach(line => {
           const trimmed = line.trim();
           if (trimmed.startsWith("- [ ]") || trimmed.startsWith("- [/]")) {
-            // Check if assignee is missing (no @...)
             if (!/@([a-zA-Z0-9_-]+)/.test(trimmed)) {
               missingAssigneesCount++;
             }
-            // Check if task contains BLOCKED
             if (trimmed.toUpperCase().includes("BLOCKED") || trimmed.toUpperCase().includes("BLOCKER")) {
               blockedTasksCount++;
             }
           }
         });
+      }
 
-        if (missingAssigneesCount > 0) {
-          diagnostics.push({
-            filePath: file.path,
-            line: 7,
-            severity: "warning",
-            message: msg(
-              `Definition of Ready verletzt: ${missingAssigneesCount} Aufgabe(n) im Sprint-Backlog haben keine Zuweisung (@name).`,
-              `Definition of Ready violated: ${missingAssigneesCount} task(s) in the sprint backlog are missing assignees (@name).`
-            ),
-            code: "DOR_MISSING_ASSIGNEE"
-          });
-        }
+      parsedIssues.forEach(iss => {
+        const inActiveSprint = iss.sprint && activeSprintIds.has(iss.sprint.toLowerCase());
+        const isCommitted = inActiveSprint || iss.status === "ready" || iss.status === "in-progress" || iss.status === "review";
+        if (!isCommitted || iss.status === "done") return;
 
-        if (blockedTasksCount > 0) {
-          diagnostics.push({
-            filePath: file.path,
-            line: 8,
-            severity: "warning",
-            message: msg(
-              `Definition of Ready verletzt: Es gibt ${blockedTasksCount} blockierte Aufgabe(n) im aktuellen Sprint.`,
-              `Definition of Ready violated: There are ${blockedTasksCount} blocked task(s) in the current sprint.`
-            ),
-            code: "DOR_BLOCKED_TASKS"
-          });
+        if (!iss.assignee || iss.assignee.toLowerCase() === "unassigned") {
+          missingAssigneesCount++;
         }
+        if (iss.type !== "epic" && (!iss.storyPoints || iss.storyPoints <= 0)) {
+          unestimatedSprintIssuesCount++;
+        }
+        const isBlocked = iss.blockedBy.some(bId => {
+          const target = issueById.get(bId.toUpperCase());
+          return !target || target.status !== "done";
+        });
+        if (isBlocked) {
+          blockedTasksCount++;
+        }
+      });
+
+      if (missingAssigneesCount > 0) {
+        diagnostics.push({
+          filePath: file.path,
+          line: 7,
+          severity: "warning",
+          message: msg(
+            `Definition of Ready verletzt: ${missingAssigneesCount} Aufgabe(n)/Ticket(s) haben keine Zuweisung (@name).`,
+            `Definition of Ready violated: ${missingAssigneesCount} task(s)/issue(s) are missing assignees (@name).`
+          ),
+          code: "DOR_MISSING_ASSIGNEE"
+        });
+      }
+
+      if (blockedTasksCount > 0) {
+        diagnostics.push({
+          filePath: file.path,
+          line: 8,
+          severity: "warning",
+          message: msg(
+            `Definition of Ready verletzt: Es gibt ${blockedTasksCount} blockierte Aufgabe(n)/Ticket(s) im aktuellen Sprint.`,
+            `Definition of Ready violated: There are ${blockedTasksCount} blocked task(s)/issue(s) in the current sprint.`
+          ),
+          code: "DOR_BLOCKED_TASKS"
+        });
+      }
+
+      if (unestimatedSprintIssuesCount > 0) {
+        diagnostics.push({
+          filePath: file.path,
+          line: 9,
+          severity: "warning",
+          message: msg(
+            `Definition of Ready verletzt: ${unestimatedSprintIssuesCount} Sprint-Ticket(s) haben noch keine Story-Point-Schätzung.`,
+            `Definition of Ready violated: ${unestimatedSprintIssuesCount} sprint issue(s) are missing Story Point estimates.`
+          ),
+          code: "DOR_MISSING_ESTIMATE"
+        });
       }
     }
 
@@ -397,6 +609,109 @@ export function lintWorkspaceFiles(files: WorkspaceFile[], lang: "de" | "en" = "
           }
         }
       });
+    }
+
+    // 7. Validate Git-native Jira / Scrum Issues (issues/*.md)
+    if (file.path.startsWith("issues/") && file.path.endsWith(".md")) {
+      const issueMeta = parseIssueLintMetadata(file);
+      if (!issueMeta) {
+        diagnostics.push({
+          filePath: file.path,
+          line: 1,
+          severity: "warning",
+          message: msg(
+            "Issue-Datei enthält keinen gültigen YAML-Frontmatter-Block (--- ... ---).",
+            "Issue file is missing a valid YAML frontmatter block (--- ... ---)."
+          ),
+          code: "ISSUE_FRONTMATTER_MISSING"
+        });
+      } else {
+        if (!issueMeta.title) {
+          diagnostics.push({
+            filePath: file.path,
+            line: issueMeta.lines.title,
+            severity: "warning",
+            message: msg(
+              `Ticket '${issueMeta.id}' hat keinen 'title' im YAML-Frontmatter.`,
+              `Issue '${issueMeta.id}' is missing a 'title' in YAML frontmatter.`
+            ),
+            code: "ISSUE_TITLE_MISSING"
+          });
+        }
+
+        const isActiveStatus = issueMeta.status === "in-progress" || issueMeta.status === "review";
+        const inActiveSprint = Boolean(issueMeta.sprint && activeSprintIds.has(issueMeta.sprint.toLowerCase()));
+
+        if (isActiveStatus && (!issueMeta.assignee || issueMeta.assignee.toLowerCase() === "unassigned")) {
+          diagnostics.push({
+            filePath: file.path,
+            line: issueMeta.lines.assignee,
+            severity: "warning",
+            message: msg(
+              `Ticket '${issueMeta.id}' im Status '${issueMeta.status}' hat keinen Bearbeiter ('assignee').`,
+              `Issue '${issueMeta.id}' in '${issueMeta.status}' status is missing an 'assignee'.`
+            ),
+            code: "ISSUE_MISSING_ASSIGNEE"
+          });
+        }
+
+        if ((isActiveStatus || (inActiveSprint && issueMeta.status === "ready")) && issueMeta.type !== "epic" && (!issueMeta.storyPoints || issueMeta.storyPoints <= 0)) {
+          diagnostics.push({
+            filePath: file.path,
+            line: issueMeta.lines.storyPoints,
+            severity: "warning",
+            message: msg(
+              `Ticket '${issueMeta.id}' (${issueMeta.status}) hat noch keine Story-Points-Schätzung (> 0).`,
+              `Issue '${issueMeta.id}' (${issueMeta.status}) is missing Story Points (> 0).`
+            ),
+            code: "ISSUE_MISSING_POINTS"
+          });
+        }
+
+        issueMeta.blockedBy.forEach(blockerId => {
+          const blockerTarget = issueById.get(blockerId.toUpperCase());
+          if (!blockerTarget) {
+            diagnostics.push({
+              filePath: file.path,
+              line: issueMeta.lines.blockedBy,
+              severity: "error",
+              message: msg(
+                `Unbekannte Blocker-Referenz: Ticket '${blockerId}' existiert nicht unter issues/*.md.`,
+                `Unresolved blocker reference: Issue '${blockerId}' does not exist in issues/*.md.`
+              ),
+              code: "ISSUE_UNKNOWN_BLOCKER"
+            });
+          } else if (issueMeta.status !== "done" && blockerTarget.status !== "done") {
+            diagnostics.push({
+              filePath: file.path,
+              line: issueMeta.lines.blockedBy,
+              severity: "warning",
+              message: msg(
+                `Ticket '${issueMeta.id}' ist blockiert durch '${blockerTarget.id}' (aktueller Status: ${blockerTarget.status}).`,
+                `Issue '${issueMeta.id}' is blocked by '${blockerTarget.id}' (current status: ${blockerTarget.status}).`
+              ),
+              code: "ISSUE_BLOCKED_UNRESOLVED"
+            });
+          }
+        });
+
+        if (issueMeta.startDate && issueMeta.endDate) {
+          const start = new Date(issueMeta.startDate);
+          const end = new Date(issueMeta.endDate);
+          if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && start > end) {
+            diagnostics.push({
+              filePath: file.path,
+              line: issueMeta.lines.endDate,
+              severity: "error",
+              message: msg(
+                `Zeitraum-Fehler in Ticket '${issueMeta.id}': Enddatum (${issueMeta.endDate}) liegt vor Startdatum (${issueMeta.startDate}).`,
+                `Date range error in issue '${issueMeta.id}': End date (${issueMeta.endDate}) is before start date (${issueMeta.startDate}).`
+              ),
+              code: "DATE_ORDER_ERROR"
+            });
+          }
+        }
+      }
     }
   });
 

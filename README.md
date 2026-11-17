@@ -1,69 +1,97 @@
 # MDTeam Workspace
 
-A cutting-edge, collaborative desktop client designed for developer teams to efficiently edit, manage, and visualize software architecture and project management documentation (especially following the **arc42 standard**).
+A collaborative, **Git-native Jira + Confluence + arc42 Desktop & Web Platform** built for engineering teams, Scrum Masters, Product Owners, and non-technical Stakeholders.
 
-Built as a native desktop application (Windows, macOS, Linux) using **Tauri v2** and **Next.js**, it combines the power of a code-centric Markdown editor with the ease of visual forms and Agile project management boards.
+Built as a native desktop application (Windows, macOS, Linux) using **Tauri v2 (Rust)** and **Next.js 16 (React 19, TypeScript)**, MDTeam Workspace stores every ticket, sprint, Confluence knowledge page, Architecture Decision Record (ADR), and arc42 chapter as human-readable Markdown + YAML files directly inside your Git repository—zero external relational database required.
 
 ---
 
 ## 🌟 Key Features
 
-### 1. Code-Centric Markdown & Visual Form Editors
-*   **Split-Pane Editor:** Edit files in a robust code editor (Monaco Editor) while viewing a high-fidelity rendering side-by-side.
-*   **Visual Editor Mode ("Notion-Style"):** Seamlessly toggle between raw Markdown and an interactive, block-based or form-based WYSIWYG editor.
-*   **Agile Forms:** Specialized visual forms for sprint backlogs, capacity planning, burn-down tables, and retrospectives. Edits are synced back to the markdown source file in real time.
+### 1. Git-Native Jira & Scrum Engine (`issues/*.md`, `sprints/*.md`)
+*   **Structured Agile Issue Hierarchy:** First-class **Epics, User Stories, Bugs, and Tasks** stored as `issues/MDT-*.md` with round-trip YAML frontmatter (`id`, `type`, `status`, `priority`, `story_points`, `sprint`, `epic`, `assignee`, `blocked_by`, `branch`, `start_date`, `end_date`) and Markdown sections (`Description`, `Acceptance Criteria`, `Comments`).
+*   **5-Column Interactive Kanban Board:** HTML5 drag-and-drop across `Backlog` → `Ready` → `In Progress` → `In Review` → `Done`, configurable **WIP Limits** with red capacity alerts, **Swimlanes** (`None`, `By Assignee`, `By Epic`, `By Priority`), and JQL-style live filtering (`type:bug status:in-progress assignee:@me is:blocked`).
+*   **Backlog & Sprint Planning:** Create sprints (`sprints/sprint-*.md`), assign issues, inspect Story Point load vs. team capacity (`management/capacity.md`), **Start / Complete Sprints** (rolling over unfinished work and appending velocity history automatically), and **1-click migrate** legacy `management/sprint-backlog.md` checklists into structured `issues/MDT-*.md` files.
+*   **Real-Time Planning Poker:** Interactive Fibonacci estimation (`0, 1, 2, 3, 5, 8, 13, 21, ?`) synchronized live via **Yjs WebSocket** awareness rooms, with an instant offline team-consensus simulation mode when working locally.
+*   **Date-Driven Gantt Roadmap:** Real date-math timeline (`Month` / `Quarter` zoom) plotting Epics, Stories, and `management/roadmap.md` milestones with progress bars, a live `Today` marker, and SVG dependency arrows for `blocked_by` relationships.
+*   **Real Agile Metrics:** Dynamic SVG **Sprint Burndown**, **Sprint Burnup** (with mid-sprint scope-creep detection), **Cumulative Flow Diagram (CFD)**, and historical **Velocity** bar charts computed directly from Story Points.
 
-### 2. Integrated Scrum Master & Agile Tools
-*   **Visual Kanban Board:** Automatically parses, categorizes, and displays tasks (`TODO`, `IN-PROGRESS`, `DONE`) defined in `sprint-backlog.md`.
-*   **Sprint Burn-Down Chart:** Dynamic SVG line chart showing ideal vs. actual remaining story points mapped from `burndown.md`.
-*   **Sprint Capacity & Velocity Tracker:** Calculations for team availability (vacation, focus factors) and historical velocity tracking.
-*   **Daily Standup Assistant:** Generates automated daily status reports (completed tasks, in-progress tasks, active blockers) based on files modified in the last 24 hours.
-*   **Interactive Retrospective Board:** Renders retro bullet points as Glad (green), Sad (red), or Blocker (yellow) sticky notes that can be edited or deleted in-place.
+### 2. Confluence-Grade Wiki, Live Query Macros & DOCX Export
+*   **Live Query Macro (`LiveQueryBlock`):** Embed dynamic, Confluence-style database views inside any Markdown page using fenced ```` ```query ```` blocks:
+    ````markdown
+    ```query
+    FROM issues
+    WHERE sprint = sprint-01
+    SORT priority desc
+    VIEW table
+    ```
+    ````
+    Supports `FROM issues | adrs | pages | roadmap | arc42 | wiki | sprints | all`, `WHERE` filters (`=`, `!=`, `~`, `in`, `>`), `SORT`, and instant interactive toggling between **Table**, **Cards**, and **Stats** views.
+*   **Document Lifecycle Governance (`PageGovernanceBar`):** Manage page review states (`Draft` → `In Review` → `Approved`), record `@approver` & timestamp metadata in YAML frontmatter, view word count & estimated reading time, and launch templates or page history in one click.
+*   **Inline Review Comments (`InlineCommentsDrawer`):** Highlight quotes or lines to open anchored review threads with `@mentions`, reply history, and `Resolve / Reopen` tracking persisted in `.mdteam/inline-comments.json`.
+*   **Page Version History & Time Machine (`PageHistoryModal`):** Inspect native Git commit history (`git log --follow` & `git show <hash>:<path>`) or browser session snapshots side-by-side in Monaco `DiffEditor` and restore any prior version in one click.
+*   **Template Gallery (`TemplateGalleryModal`):** Scaffold **arc42 Chapters**, **ADRs**, **RFC / Tech Specs**, **Sprint Retrospectives**, **Product Requirements (PRDs)**, and **Post-Mortem / Incident Reports** with pre-wired Live Query blocks.
+*   **Clipboard & Drag-and-Drop Screenshots:** Paste (`Ctrl+V`) or drag-and-drop images directly into the editor—automatically saved to `assets/<timestamp>-<name>.png` in Tauri mode or compressed inline Data-URLs in browser mode.
+*   **Zero-Dependency Word (`.docx`) & PDF Book Export:** Native PKZIP + CRC32 OpenXML `.docx` generator (`docxExporter.ts`) exporting single pages or compiled multi-chapter **arc42 Manuals** with styled headings, runs, tables, checklists, and blockquotes alongside print-ready PDF & HTML exports.
 
-### 3. Native Desktop Features (Tauri v2)
-*   **Native Git Module:** Direct integration with local git repositories supporting Init, Status, Log, Commit, Push, Pull, and Diff operations.
-*   **Auto-Pull & Sync:** Automatically pulls remote updates when opening a project to prevent conflicts and ensure synchronized states.
-*   **Local File System Integration:** Direct read/write access to local directories without relying on cloud synchronization services.
-*   **Multi-Format Export & PDF Printing:** Save documents as HTML or print them directly to high-fidelity PDFs via custom print stylesheet overlays.
+### 3. Role Modes, Command Palette (`Ctrl+K`), Atlassian Importer & GitOps
+*   **Three Tailored Workspace Modes (`WorkspaceHeaderControls`):**
+    *   **Developer Mode:** Full VSCode-style Monaco Split Editor, Live Preview, Git Source Control, Syntax Cheatsheet, and Real-Time Linter.
+    *   **Scrum Mode:** Launches straight into the Git-Native Jira & Scrum Workspace alongside Retrospectives and the Daily Standup Assistant.
+    *   **Stakeholder / PM Clean Mode:** Hides raw code, Git, and developer clutter—presenting a distraction-free **Confluence Wiki Reader**, **Visual Form Editor**, and **Jira Board** for Product Managers and Stakeholders.
+*   **Global Command Palette (`Ctrl+K` / `Cmd+K`):** Instant fuzzy-search omnibox across all Jira issues, Wiki pages, arc42 docs, ADRs, and workspace quick actions.
+*   **Notification Inbox & Identity Switcher:** Switch active `@handle` (`@developer-a`, `@developer-b`, `@scrum-master`, `@product-owner`, or custom) and receive live unread badges for assigned issues, `@mentions`, blocked sprint items, and documents `In Review`.
+*   **Atlassian Migration Wizard (`AtlassianImportModal`):** Import **Jira CSV** exports, **Jira REST JSON** (including Atlassian Document Format / ADF rich text), and **Confluence HTML** exports (converting Confluence info/warning/code macros and tables into clean Markdown) with built-in 1-click sample datasets.
+*   **Issue-to-Branch GitOps Bridge (`GitBranchModal`):** Create and check out sanitized `feat/<ID>-<slug>` or `fix/<ID>-<slug>` branches directly from any Jira issue via native Tauri Rust Git commands (`git_current_branch`, `git_list_branches`, `git_checkout_branch`, `git_file_history`, `git_show_file_at_commit`) and automatically link `branch:` in the issue's frontmatter.
 
-### 4. Real-Time Collaboration (Yjs & WebSockets)
-*   **Conflict-Free Editing (CRDTs):** Direct binding of Monaco editor instances to a Yjs WebSocket server for real-time collaboration.
-*   **Connectivity Indicators:** Live connection status (`Connected` | `Connecting` | `Offline`) shown directly in the application footer.
-
-### 5. Multi-Project & Multi-Language Support
-*   **Multi-Project Switcher:** Manage and swap between the 5 most recently opened workspaces in the sidebar, executing clean state transitions (resetting open tabs, rescanning files, updating Git statuses).
-*   **Bilingual Localization (DE/EN):** Toggle between German and English for all menus, forms, linters, and Markdown table structures.
+### 4. Unified Knowledge Graph & Real-Time Quality Linter
+*   **Interactive Force-Directed Graph (`DocumentGraph`):** Visualizes `arc42`, `ADRs`, `Issues`, `Sprints`, `Wiki`, `Roadmap`, and `Meetings` with directed edges for Markdown links, `@[file#L1-L10]` transclusions, `epic:` parent links, and red dashed `blocked_by:` dependency links.
+*   **Real-Time Governance Linter (`linter.ts`):** Validates broken transclusions, empty arc42 sections, mandatory ADR sections, date ranges, `issues/*.md` assignee/Story Point readiness, unresolved `blocked_by` IDs, and **Definition of Done (DoD)** / **Definition of Ready (DoR)** compliance in both German and English.
 
 ---
 
 ## 🛠️ Technology Stack
 
-*   **Frontend Framework:** [Next.js](https://nextjs.org/) (React, TypeScript)
-*   **Styling:** Custom Vanilla CSS (Premium dark theme with VSCode & glassmorphism aesthetics)
-*   **Core Desktop Bridge:** [Tauri v2](https://v2.tauri.app/) (Rust-Backend)
-*   **Text Editor:** [Monaco Editor](https://microsoft.github.io/monaco-editor/) via `@monaco-editor/react`
-*   **Collaboration:** [Yjs](https://yjs.dev/), `y-websocket` & `y-monaco`
-*   **Diagrams:** [Mermaid.js](https://mermaid.js.org/) & [Draw.io](https://www.draw.io/) embeds
+*   **Frontend Framework:** [Next.js 16](https://nextjs.org/) (`output: "export"`, React 19, TypeScript)
+*   **Desktop Runtime:** [Tauri v2](https://v2.tauri.app/) (Rust backend with `@tauri-apps/plugin-fs` & `@tauri-apps/plugin-dialog`)
+*   **Code & Diff Editor:** [Monaco Editor](https://microsoft.github.io/monaco-editor/) (`@monaco-editor/react`)
+*   **Real-Time Collaboration:** [Yjs](https://yjs.dev/), `y-websocket`, and `y-monaco` CRDTs
+*   **Diagrams:** [Mermaid.js](https://mermaid.js.org/) & interactive [diagrams.net / Draw.io](https://www.draw.io/) embeds
 
 ---
 
 ## 📂 Folder Structure
 
-```
+```text
 MDTeam/
-├── src/                      # Next.js React Frontend
+├── issues/                   # Git-native Jira tickets (MDT-101.md .. MDT-105.md)
+├── sprints/                  # Active & planned Scrum sprints (sprint-01.md)
+├── src/
 │   ├── app/
-│   │   ├── layout.tsx        # Global page layout
-│   │   ├── page.tsx          # Workspace & UI components
-│   │   └── globals.css       # Core stylesheet
-│   └── components/           # Panel overlays (DiffViewer, DocumentGraph, etc.)
-├── src-tauri/                # Tauri Rust Backend
-│   ├── src/
-│   │   ├── main.rs           # Tauri entry point
-│   │   └── lib.rs            # Native Git Rust Commands
-│   └── tauri.conf.json       # App configuration & permissions
-├── package.json              # NPM dependencies & scripts
-└── README.md                 # Project documentation
+│   │   ├── layout.tsx        # Root Next.js layout
+│   │   ├── page.tsx          # Unified Developer / Scrum / Stakeholder Workspace
+│   │   └── globals.css       # Core dark-theme & layout styles
+│   ├── components/
+│   │   ├── ScrumWorkspace.tsx          # Kanban, Backlog, Gantt Roadmap & Agile Metrics
+│   │   ├── IssueDrawer.tsx             # Full Jira Issue Slide-Over Editor
+│   │   ├── PlanningPokerModal.tsx      # Yjs & Offline Fibonacci Planning Poker
+│   │   ├── WikiEnhancements.tsx        # Governance Bar, Inline Comments, History & Templates
+│   │   ├── CommandPaletteAndModals.tsx # Ctrl+K Omnibox, Atlassian Importer, Git Branch & Inbox
+│   │   ├── DocumentGraph.tsx           # Force-directed Knowledge & Dependency Graph
+│   │   ├── GlobalSearch.tsx            # Full-text repository search
+│   │   ├── ProblemsPanel.tsx           # Real-time DoD/DoR/ADR/Issue diagnostics
+│   │   └── DiffViewer.tsx              # Working-copy diff overlay
+│   └── utils/
+│       ├── issueEngine.ts              # Issue/Sprint parser, JQL engine, Burndown/CFD & Gantt math
+│       ├── queryMacro.ts               # Declarative ```query``` macro parser & LiveQueryBlock UI
+│       ├── docxExporter.ts             # Zero-dependency PKZIP/CRC32 OpenXML .docx builder
+│       ├── atlassianImporter.ts        # Jira CSV/JSON (ADF) & Confluence HTML converter
+│       ├── linter.ts                   # Bilingual governance & Scrum readiness linter
+│       └── graphParser.ts              # Markdown, transclusion & frontmatter graph builder
+├── src-tauri/
+│   ├── src/lib.rs            # Native Git CLI & GitOps branch/history Rust commands
+│   └── tauri.conf.json       # Tauri v2 configuration & capabilities
+└── README.md
 ```
 
 ---
@@ -71,103 +99,48 @@ MDTeam/
 ## 🚀 Getting Started
 
 ### Prerequisites
-Make sure your development machine has the following tools installed:
 *   [Node.js](https://nodejs.org/) (v18+)
-*   [Rust & Cargo](https://www.rust-lang.org/) (for compiling the Tauri app)
-*   [Git](https://git-scm.com/) (for source control operations)
+*   [Rust & Cargo](https://www.rust-lang.org/) (for building the native Tauri desktop binary)
+*   [Git](https://git-scm.com/) (for native repository & branch operations)
 
-### 1. Clone the Repository & Install Dependencies
+### 1. Install Dependencies
 ```bash
-git clone https://github.com/your-team/MDTeam.git
-cd MDTeam
 npm install
 ```
 
-### 2. Start the Development Server
+### 2. Run in Development
 
-#### A. Native Desktop Application (Recommended)
-Launches the workspace inside the native Tauri window:
+#### A. Native Desktop Application (Tauri v2)
 ```bash
 npx tauri dev
 ```
 
-#### B. Web Browser Mode (Mock Sandbox)
-Runs the Next.js development server in the browser with virtual simulated files:
+#### B. Web Browser Sandbox
 ```bash
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) in your web browser.
+Open [http://localhost:3000](http://localhost:3000) in your browser. All Scrum, Confluence, DOCX export, Live Query, Planning Poker, and Atlassian Import features work seamlessly in both Tauri desktop mode and browser sandbox mode.
 
-### 3. Build for Production
-Compiles the optimized release version of the desktop application:
+### 3. Production Build
+Build the static Next.js export (`out/`):
+```bash
+npm run build
+```
+Compile the native release desktop executable (`src-tauri/target/release/app.exe` on Windows):
 ```bash
 npx tauri build --no-bundle
 ```
-The executable binary (`app.exe` on Windows) will be located at:
-`src-tauri/target/release/app.exe`
-
-### 4. CI/CD & Automated Releases (GitHub Actions)
-An automated release pipeline is configured in `.github/workflows/build.yml`.
-*   **Triggers:** Automatically runs on every push to the `main` or `master` branches, or when triggered manually via `workflow_dispatch`.
-*   **Actions:** Compiles the application concurrently using Windows and Linux runners.
-*   **Artifacts:** Creates a draft release on GitHub populated with build packages for multiple platforms:
-    *   **Windows:** Installer binaries (`.exe`, `.msi`).
-    *   **Linux (Debian/Ubuntu):** Debian package (`.deb`).
-    *   **Linux (RedHat/Fedora):** Package manager file (`.rpm`).
-    *   **Linux (Portable):** Portable bundle (`.AppImage`).
 
 ---
 
-## 📖 Document & File Guidelines
-
-The client expects a standard folder structure containing specific Markdown files to feed the dashboards and linters:
-
-| File | Purpose |
-| :--- | :--- |
-| `management/roadmap.md` | Roadmap milestones containing YAML frontmatter cards. |
-| `management/sprint-backlog.md` | Active sprint tasks (displayed on the Kanban board). |
-| `management/burndown.md` | Burn-down data table (generates the burn-down SVG chart). |
-| `management/capacity.md` | Team sprint capacities (holidays, focus factors). |
-| `meetings/[Date]_retro.md` | Sprint retrospective notes (Glad/Sad/Impediment sticky board). |
-| `management/definition-of-done.md` | Quality criteria for the sprint checked by the DoD Linter. |
-| `management/definition-of-ready.md` | Criteria checklist validating backlog items in progress. |
-
-### Real-Time Linter (`linter.ts`)
-The application features a real-time linter which analyzes markdown files and displays diagnostics directly in Monaco:
-*   **DoD Validation:** Flags unresolved blocker lines or unfinished backlog tasks.
-*   **DoR Validation:** Warns if active backlog items lack assignee handles (`@name`) or remain blocked.
-*   **ADR Verification:** Confirms that Architecture Decision Records include all mandatory sections (Status, Context, Decision, Consequences).
-
----
-
-## 🤝 Setting Up Collaboration
-To try the real-time multi-user synchronization, spin up a local Yjs WebSocket server:
+## 🤝 Real-Time Collaboration (Yjs)
+Start a local Yjs WebSocket server for multi-user Monaco editing and live Planning Poker rooms:
 ```bash
 npx y-websocket
 ```
-Once active, navigate to **Settings** (gear icon) in the app, type `ws://localhost:1234` in the server URL field, and click connect.
-
----
-
-## 🐳 Docker Deployment
-
-You can host both the web client workspace and the Yjs collaboration server together using Docker and Docker Compose.
-
-### Quick Start
-To build the images and run the containers in the background, execute:
-```bash
-docker-compose up -d --build
-```
-
-### Services Launched
-*   **workspace-web (Port 80):** Multi-stage build that compiles the Next.js static site and serves it via Nginx on port 80.
-*   **yjs-server (Port 1234):** Runs the Yjs websocket collaboration server on port 1234.
-
-Once active:
-*   Open `http://localhost` in your browser to access the web application.
-*   Navigate to **Settings** (gear icon) in the web app, and type `ws://localhost:1234` in the server URL field to establish the real-time syncing.
+Open **Settings** in MDTeam Workspace and connect to `ws://localhost:1234` (or launch both web + Yjs containers via `docker-compose up -d --build`).
 
 ---
 
 ## 📄 License
-This project is licensed for internal team use. Please refer to your project manager for licensing guidelines.
+Licensed for internal team and enterprise use.
