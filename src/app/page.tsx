@@ -7692,8 +7692,12 @@ ${allBlockerLines.join("\n") || "* Keine aktiven Blocker gemeldet"}`;
             }}
             onSave={(savedIssue) => {
               handleUpsertWorkspaceFile(serializeIssueToMarkdown(savedIssue));
-              setIsQuickCreateIssueOpen(false);
-              setQuickCreateDraft(null);
+              if (isQuickDrawerNew) {
+                setIsQuickCreateIssueOpen(false);
+                setQuickCreateDraft(null);
+              } else {
+                setQuickCreateDraft(savedIssue);
+              }
             }}
             onDelete={
               !isQuickDrawerNew
