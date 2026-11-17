@@ -62,35 +62,39 @@ Built as a native desktop application (Windows, macOS, Linux) using **Tauri v2 (
 
 ## 📂 Folder Structure
 
+Every source module in `src/` and `src-tauri/src/` follows a strict `<= 500` lines modularity rule with clean barrel entrypoints:
+
 ```text
 MDTeam/
-├── issues/                   # Git-native Jira tickets (MDT-101.md .. MDT-105.md)
-├── sprints/                  # Active & planned Scrum sprints (sprint-01.md)
+├── issues/                     # Git-native Jira tickets (MDT-101.md .. MDT-105.md)
+├── sprints/                    # Active & planned Scrum sprints (sprint-01.md)
 ├── src/
-│   ├── app/
-│   │   ├── layout.tsx        # Root Next.js layout
-│   │   ├── page.tsx          # Unified Developer / Scrum / Stakeholder Workspace
-│   │   └── globals.css       # Core dark-theme & layout styles
+│   ├── app/                    # Next.js App Router shell (layout.tsx, page.tsx, globals.css)
 │   ├── components/
-│   │   ├── ScrumWorkspace.tsx          # Kanban, Backlog, Gantt Roadmap & Agile Metrics
-│   │   ├── IssueDrawer.tsx             # Full Jira Issue Slide-Over Editor
-│   │   ├── PlanningPokerModal.tsx      # Yjs & Offline Fibonacci Planning Poker
-│   │   ├── WikiEnhancements.tsx        # Governance Bar, Inline Comments, History & Templates
-│   │   ├── CommandPaletteAndModals.tsx # Ctrl+K Omnibox, Atlassian Importer, Git Branch & Inbox
-│   │   ├── DocumentGraph.tsx           # Force-directed Knowledge & Dependency Graph
-│   │   ├── GlobalSearch.tsx            # Full-text repository search
-│   │   ├── ProblemsPanel.tsx           # Real-time DoD/DoR/ADR/Issue diagnostics
-│   │   └── DiffViewer.tsx              # Working-copy diff overlay
+│   │   ├── editor/             # Split Monaco/Preview shell, Stakeholder reader & visual-editors/
+│   │   ├── layout/             # AppTopBar, ActivityStrip, AppStatusBar, HeaderControls & ModalsHost
+│   │   ├── modals/             # Command Palette (Ctrl+K), Atlassian Importer, Git Branch & Identity
+│   │   ├── panels/             # Explorer, Git, Meetings, Settings, Cheatsheet & PM sub-panels
+│   │   ├── scrum/              # Kanban, Backlog, Gantt, Agile Metrics, issue-drawer/ & poker/
+│   │   ├── wiki/               # Governance Bar, Inline Comments, LiveQueryBlock, History & Templates
+│   │   └── *.tsx               # Thin public barrels + DocumentGraph, GlobalSearch, Problems, DiffViewer
+│   ├── constants/              # Translations, workspace seeds/ & Confluence/Jira templates/samples
+│   ├── context/                # WorkspaceContext provider & typed state orchestration
+│   ├── hooks/                  # Tauri FS/Git sync, editor actions, Yjs collaboration & exports
+│   ├── styles/                 # Domain stylesheets (tokens, workspace-layout, preview, agile-forms)
+│   ├── types/                  # Shared WorkspaceFile & Agile domain interfaces
 │   └── utils/
-│       ├── issueEngine.ts              # Issue/Sprint parser, JQL engine, Burndown/CFD & Gantt math
-│       ├── queryMacro.ts               # Declarative ```query``` macro parser & LiveQueryBlock UI
-│       ├── docxExporter.ts             # Zero-dependency PKZIP/CRC32 OpenXML .docx builder
-│       ├── atlassianImporter.ts        # Jira CSV/JSON (ADF) & Confluence HTML converter
-│       ├── linter.ts                   # Bilingual governance & Scrum readiness linter
-│       └── graphParser.ts              # Markdown, transclusion & frontmatter graph builder
+│       ├── docx/               # Zero-dependency PKZIP/CRC32 OpenXML .docx builder
+│       ├── importers/          # Jira CSV, Jira JSON (ADF) & Confluence HTML converters
+│       ├── issues/             # Issue/Sprint YAML serializers, JQL filter, Burndown/CFD & Gantt math
+│       ├── linter/             # Bilingual DoD/DoR, ADR & Scrum readiness rules
+│       ├── query/              # Declarative ```query``` macro parser & executor
+│       ├── workspace/          # Markdown/Mermaid/Transclusion renderer, Monaco setup & FS scanner
+│       └── *.ts                # Public utility barrels, frontmatter.ts & graphParser.ts
 ├── src-tauri/
-│   ├── src/lib.rs            # Native Git CLI & GitOps branch/history Rust commands
-│   └── tauri.conf.json       # Tauri v2 configuration & capabilities
+│   ├── src/lib.rs              # Native Git CLI & GitOps branch/history Rust commands
+│   └── tauri.conf.json         # Tauri v2 configuration & capabilities
+├── AGENTS.md                   # Framework & <=500-line modularity rules
 └── README.md
 ```
 
