@@ -20,40 +20,71 @@ export function getDataDir(): string {
   return path.resolve(process.cwd(), ".mdteam-data");
 }
 
+function isAllowedCorsOrigin(requestOrigin: string, reqHostHeader: string | undefined): boolean {
+  let parsedOrigin: URL;
+  try {
+    parsedOrigin = new URL(requestOrigin);
+  } catch {
+    return false;
+  }
+  if (parsedOrigin.protocol !== "http:" && parsedOrigin.protocol !== "https:") {
+    return false;
+  }
+  if (parsedOrigin.origin !== requestOrigin) {
+    return false;
+  }
+
+  // (a) Explicit MDTEAM_CORS_ORIGINS allowlist (excluding wildcard '*' when credentials are used)
+  const allowedOriginsRaw = (process.env.MDTEAM_CORS_ORIGINS || "").trim();
+  if (allowedOriginsRaw) {
+    const allowedList = allowedOriginsRaw
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => Boolean(item) && item !== "*");
+    if (allowedList.includes(requestOrigin)) {
+      return true;
+    }
+  }
+
+  // (b) Same-origin host match
+  const normalizedReqHost = (reqHostHeader || "").trim().toLowerCase();
+  if (normalizedReqHost && parsedOrigin.host.toLowerCase() === normalizedReqHost) {
+    return true;
+  }
+
+  // (c) Local Next.js dev server origin in non-production environments
+  if (
+    process.env.NODE_ENV !== "production" &&
+    (requestOrigin === "http://localhost:3000" || requestOrigin === "http://127.0.0.1:3000")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export function applyCorsAndSecurityHeaders(
   req: IncomingMessage,
   res: ServerResponse
 ): void {
-  const allowedOriginsRaw = (process.env.MDTEAM_CORS_ORIGINS || "").trim();
-  const requestOrigin = req.headers.origin;
+  const rawOrigin = typeof req.headers.origin === "string" ? req.headers.origin.trim() : "";
 
-  if (requestOrigin) {
-    if (!allowedOriginsRaw) {
-      // Reflect origin in local/self-hosted deployments unless an explicit allowlist is set
-      res.setHeader("Access-Control-Allow-Origin", requestOrigin);
+  if (rawOrigin) {
+    res.setHeader("Vary", "Origin");
+    if (isAllowedCorsOrigin(rawOrigin, req.headers.host)) {
+      res.setHeader("Access-Control-Allow-Origin", rawOrigin);
       res.setHeader("Access-Control-Allow-Credentials", "true");
-      res.setHeader("Vary", "Origin");
-    } else {
-      const allowedList = allowedOriginsRaw
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean);
-      if (allowedList.includes(requestOrigin) || allowedList.includes("*")) {
-        res.setHeader("Access-Control-Allow-Origin", requestOrigin);
-        res.setHeader("Access-Control-Allow-Credentials", "true");
-        res.setHeader("Vary", "Origin");
-      }
+      res.setHeader(
+        "Access-Control-Allow-Methods",
+        "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+      );
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, X-Scrum-Action"
+      );
     }
   }
 
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-  );
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Scrum-Action"
-  );
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "same-origin");

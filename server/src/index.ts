@@ -5,7 +5,14 @@ import {
   issueSessionForUser,
   requireAuthenticatedUser,
   requireRoleAction,
+  resolveAuthenticatedUser,
 } from "./auth/jwtSession.js";
+import {
+  checkLoginRateLimit,
+  clearLoginFailures,
+  extractClientIp,
+  recordLoginFailure,
+} from "./auth/loginRateLimiter.js";
 import { handleOidcCallback, handleOidcLoginRedirect } from "./auth/oidcClient.js";
 import { authenticateViaLdap, isLdapEnabled } from "./auth/ldapClient.js";
 import {
@@ -33,10 +40,25 @@ import {
 import {
   dispatchNotificationEvent,
   sendTestWebhookNotification,
+  validateWebhookPatchUrls,
   type OutgoingNotificationPayload,
 } from "./notifications/webhookDispatcher.js";
 import { handleProjectRoutes } from "./routes/projectRoutes.js";
 import type { OidcServerConfig, ScrumRole, WebhookConfig } from "./types.js";
+
+function extractFallbackWsToken(req: IncomingMessage, url: URL): string {
+  const direct = (url.searchParams.get("token") || "").trim();
+  if (direct) return direct;
+  const origUri = req.headers["x-original-uri"];
+  if (typeof origUri === "string" && origUri.includes("token=")) {
+    try {
+      return (new URL(origUri, "http://localhost").searchParams.get("token") || "").trim();
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
 
 async function routeApiRequest(
   req: IncomingMessage,
@@ -76,6 +98,22 @@ async function routeApiRequest(
     const body = await readJsonBody<{ username?: string; password?: string }>(req);
     const rawUsername = body.username || "";
     const rawPassword = body.password || "";
+    const clientIp = extractClientIp(req);
+    const rateStatus = checkLoginRateLimit(clientIp, rawUsername);
+    if (!rateStatus.allowed) {
+      sendJson(
+        res,
+        429,
+        {
+          error: "Too many failed login attempts. Please wait before retrying.",
+          code: "TOO_MANY_ATTEMPTS",
+          retryAfterSec: rateStatus.retryAfterSec,
+        },
+        { "Retry-After": String(rateStatus.retryAfterSec) }
+      );
+      return;
+    }
+
     let user = await authenticateLocalUser(rawUsername, rawPassword);
     if (!user && isLdapEnabled()) {
       const ldapProfile = await authenticateViaLdap(rawUsername, rawPassword);
@@ -84,9 +122,11 @@ async function routeApiRequest(
       }
     }
     if (!user) {
+      recordLoginFailure(clientIp, rawUsername);
       sendError(res, 401, "Invalid username or password", "INVALID_CREDENTIALS");
       return;
     }
+    clearLoginFailures(clientIp, rawUsername);
     const { token, cookieHeader } = await issueSessionForUser(user);
     sendJson(
       res,
@@ -94,6 +134,24 @@ async function routeApiRequest(
       { user, token },
       { "Set-Cookie": cookieHeader }
     );
+    return;
+  }
+
+  if (pathname === "/api/auth/ws-verify" && method === "GET") {
+    let user = await resolveAuthenticatedUser(req);
+    if (!user) {
+      const fallbackToken = extractFallbackWsToken(req, url);
+      if (fallbackToken) {
+        user = await resolveAuthenticatedUser({
+          headers: { authorization: `Bearer ${fallbackToken}` },
+        } as IncomingMessage);
+      }
+    }
+    if (!user) {
+      sendJson(res, 401, { error: "Unauthorized WebSocket" });
+      return;
+    }
+    sendJson(res, 200, { ok: true, userId: user.id, role: user.role });
     return;
   }
 
@@ -235,6 +293,7 @@ async function routeApiRequest(
     }
     if (method === "PUT") {
       const patch = await readJsonBody<Partial<WebhookConfig>>(req);
+      await validateWebhookPatchUrls(patch);
       const webhooks = await updateWebhookConfig(patch);
       sendJson(res, 200, { webhooks });
       return;
