@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+
+import json
+import os
+import secrets
+import sys
+import agent
+
+sys.path.insert(
+    0,
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "bin")),
+)
+from mdteam_helpers import read_secrets_env, write_secrets_env  # noqa: E402
+
+request = {}
+if not sys.stdin.isatty():
+    raw_stdin = sys.stdin.read().strip()
+    if raw_stdin:
+        request = json.loads(raw_stdin)
+
+requested_host = (
+    request.get("traefik_host") or request.get("host") or os.environ.get("TRAEFIK_HOST") or ""
+).strip().lower()
+http2https = os.environ.get("TRAEFIK_HTTP2HTTPS", "True") == "True"
+lets_encrypt = os.environ.get("TRAEFIK_LETS_ENCRYPT", "False") == "True"
+ldap_domain = (os.environ.get("LDAP_DOMAIN") or "").strip()
+ldap_default_role = (os.environ.get("LDAP_DEFAULT_ROLE") or "developer").strip()
+ldap_admin_group = (os.environ.get("LDAP_ADMIN_GROUP") or "").strip()
+ldap_po_group = (os.environ.get("LDAP_PO_GROUP") or "").strip()
+ldap_sm_group = (os.environ.get("LDAP_SM_GROUP") or "").strip()
+ldap_stakeholder_group = (os.environ.get("LDAP_STAKEHOLDER_GROUP") or "").strip()
+
+# Generate a distinct JWT signing secret for the cloned instance
+existing_secrets = read_secrets_env("secrets.env")
+fresh_jwt_secret = secrets.token_hex(32)
+persisted_password = existing_secrets.get("MDTEAM_INITIAL_PASSWORD", "")
+
+secrets_entries = {
+    "JWT_SECRET": fresh_jwt_secret,
+    "MDTEAM_JWT_SECRET": fresh_jwt_secret,
+    "MDTEAM_COOKIE_SECURE": "true" if http2https else "false",
+}
+if persisted_password:
+    secrets_entries["MDTEAM_INITIAL_PASSWORD"] = persisted_password
+
+ldap_resolved = False
+if ldap_domain:
+    try:
+        from agent.ldapproxy import Ldapproxy
+
+        lp = Ldapproxy().get_domain(ldap_domain)
+        secrets_entries.update(
+            {
+                "LDAP_ENABLED": "true",
+                "LDAP_DOMAIN": ldap_domain,
+                "LDAP_HOST": "accountprovider",
+                "LDAP_PORT": str(lp["port"]),
+                "LDAP_SCHEMA": str(lp["schema"]),
+                "LDAP_BASE_DN": str(lp["base_dn"]),
+                "LDAP_BIND_DN": str(lp.get("bind_dn", "")),
+                "LDAP_BIND_PASSWORD": str(lp.get("bind_password", "")),
+                "LDAP_DEFAULT_ROLE": ldap_default_role,
+                "LDAP_ADMIN_GROUP": ldap_admin_group,
+                "LDAP_PO_GROUP": ldap_po_group,
+                "LDAP_SM_GROUP": ldap_sm_group,
+                "LDAP_STAKEHOLDER_GROUP": ldap_stakeholder_group,
+            }
+        )
+        ldap_resolved = True
+    except Exception:
+        agent.set_env("LDAP_DOMAIN", "")
+
+if not ldap_resolved:
+    secrets_entries.update(
+        {
+            "LDAP_ENABLED": "false",
+            "LDAP_DOMAIN": "",
+            "LDAP_DEFAULT_ROLE": ldap_default_role,
+            "LDAP_ADMIN_GROUP": ldap_admin_group,
+            "LDAP_PO_GROUP": ldap_po_group,
+            "LDAP_SM_GROUP": ldap_sm_group,
+            "LDAP_STAKEHOLDER_GROUP": ldap_stakeholder_group,
+        }
+    )
+
+write_secrets_env(secrets_entries, "secrets.env")
+os.chmod("secrets.env", 0o600)
+
+# Avoid hijacking an active production hostname owned by the source instance
+if requested_host and not agent.http_route_in_use(domain=requested_host):
+    agent.set_env("TRAEFIK_HOST", requested_host)
+    agent.dump_env()
+
+    tcp_port = os.environ["TCP_PORT"]
+    response = agent.tasks.run(
+        agent_id=agent.resolve_agent_id("traefik@node"),
+        action="set-route",
+        data={
+            "instance": os.environ["MODULE_ID"],
+            "url": f"http://127.0.0.1:{tcp_port}",
+            "host": requested_host,
+            "lets_encrypt": lets_encrypt,
+            "http2https": http2https,
+        },
+    )
+    agent.assert_exp(response["exit_code"] == 0)
+
+    agent.run_helper("systemctl", "--user", "daemon-reload").check_returncode()
+    agent.run_helper("systemctl", "--user", "enable", "mdteam.service").check_returncode()
+    agent.run_helper("systemctl", "--user", "restart", "mdteam.service").check_returncode()
+else:
+    agent.set_env("TRAEFIK_HOST", "")
+    agent.dump_env()

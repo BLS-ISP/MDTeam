@@ -1,0 +1,32 @@
+# Stage 1: Build NethServer 8 Cockpit UI (@nethserver/ns8-ui-lib + Carbon Vue 2)
+FROM docker.io/library/node:20-slim AS ui-builder
+WORKDIR /usr/src/ui
+ENV NODE_OPTIONS=--openssl-legacy-provider
+COPY ns8/ui/package*.json ./
+RUN npm install --legacy-peer-deps
+COPY ns8/ui/ ./
+RUN npm run build
+
+# Stage 2: Normalize line endings, strip bytecode, and set executable bits on imageroot
+FROM docker.io/library/alpine:3.20 AS imageroot-builder
+COPY ns8/imageroot /imageroot
+RUN find /imageroot -name "__pycache__" -type d -exec rm -rf {} + && \
+    find /imageroot -name "*.pyc" -delete && \
+    find /imageroot -type f -exec sed -i 's/\r$//' {} + && \
+    chmod +x /imageroot/actions/*/[0-9]* \
+             /imageroot/events/*/[0-9]* \
+             /imageroot/update-module.d/* \
+             /imageroot/bin/*
+
+# Stage 3: Assemble rootless NethServer 8 OCI module archive
+FROM scratch
+COPY --from=imageroot-builder /imageroot /imageroot
+COPY --from=ui-builder /usr/src/ui/dist /ui
+
+LABEL org.nethserver.authorizations="traefik@node:routeadm cluster:accountconsumer" \
+      org.nethserver.tcp-ports-demand="1" \
+      org.nethserver.rootfull="0" \
+      org.nethserver.flags="" \
+      org.nethserver.images="ghcr.io/bls-isp/mdteam/workspace-web:latest ghcr.io/bls-isp/mdteam/api-server:latest ghcr.io/bls-isp/mdteam/yjs-server:latest"
+
+ENTRYPOINT ["/"]

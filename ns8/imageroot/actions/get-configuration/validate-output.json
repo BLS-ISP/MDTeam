@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "get-configuration output",
+  "description": "Current configuration and available NethServer 8 user domains for MDTeam Workspace.",
+  "type": "object",
+  "required": [
+    "host",
+    "http2https",
+    "lets_encrypt",
+    "app_url",
+    "is_configured",
+    "ldap_domain",
+    "ldap_default_role",
+    "ldap_admin_group",
+    "ldap_po_group",
+    "ldap_sm_group",
+    "available_domains"
+  ],
+  "properties": {
+    "host": {
+      "type": "string"
+    },
+    "http2https": {
+      "type": "boolean"
+    },
+    "lets_encrypt": {
+      "type": "boolean"
+    },
+    "app_url": {
+      "type": "string"
+    },
+    "is_configured": {
+      "type": "boolean"
+    },
+    "ldap_domain": {
+      "type": "string"
+    },
+    "ldap_default_role": {
+      "type": "string"
+    },
+    "ldap_admin_group": {
+      "type": "string"
+    },
+    "ldap_po_group": {
+      "type": "string"
+    },
+    "ldap_sm_group": {
+      "type": "string"
+    },
+    "ldap_stakeholder_group": {
+      "type": "string"
+    },
+    "available_domains": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

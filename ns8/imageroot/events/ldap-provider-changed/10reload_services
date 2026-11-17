@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+
+import os
+import secrets
+import sys
+import agent
+
+sys.path.insert(
+    0,
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "bin")),
+)
+from mdteam_helpers import read_secrets_env, write_secrets_env  # noqa: E402
+
+ldap_domain = (os.environ.get("LDAP_DOMAIN") or "").strip()
+if not ldap_domain:
+    sys.exit(0)
+
+http2https = os.environ.get("TRAEFIK_HTTP2HTTPS", "True") == "True"
+ldap_default_role = (os.environ.get("LDAP_DEFAULT_ROLE") or "developer").strip()
+ldap_admin_group = (os.environ.get("LDAP_ADMIN_GROUP") or "").strip()
+ldap_po_group = (os.environ.get("LDAP_PO_GROUP") or "").strip()
+ldap_sm_group = (os.environ.get("LDAP_SM_GROUP") or "").strip()
+ldap_stakeholder_group = (os.environ.get("LDAP_STAKEHOLDER_GROUP") or "").strip()
+
+existing_secrets = read_secrets_env("secrets.env")
+jwt_secret = existing_secrets.get("JWT_SECRET") or secrets.token_hex(32)
+persisted_password = existing_secrets.get("MDTEAM_INITIAL_PASSWORD", "")
+
+secrets_entries = {
+    "JWT_SECRET": jwt_secret,
+    "MDTEAM_JWT_SECRET": jwt_secret,
+    "MDTEAM_COOKIE_SECURE": "true" if http2https else "false",
+}
+if persisted_password:
+    secrets_entries["MDTEAM_INITIAL_PASSWORD"] = persisted_password
+
+from agent.ldapproxy import Ldapproxy  # noqa: E402
+
+domains = Ldapproxy().get_domains_list()
+domain_names = {
+    item["name"] if isinstance(item, dict) and "name" in item else str(item)
+    for item in (domains if isinstance(domains, list) else [])
+}
+
+if ldap_domain in domain_names:
+    lp = Ldapproxy().get_domain(ldap_domain)
+    secrets_entries.update(
+        {
+            "LDAP_ENABLED": "true",
+            "LDAP_DOMAIN": ldap_domain,
+            "LDAP_HOST": "accountprovider",
+            "LDAP_PORT": str(lp["port"]),
+            "LDAP_SCHEMA": str(lp["schema"]),
+            "LDAP_BASE_DN": str(lp["base_dn"]),
+            "LDAP_BIND_DN": str(lp.get("bind_dn", "")),
+            "LDAP_BIND_PASSWORD": str(lp.get("bind_password", "")),
+            "LDAP_DEFAULT_ROLE": ldap_default_role,
+            "LDAP_ADMIN_GROUP": ldap_admin_group,
+            "LDAP_PO_GROUP": ldap_po_group,
+            "LDAP_SM_GROUP": ldap_sm_group,
+            "LDAP_STAKEHOLDER_GROUP": ldap_stakeholder_group,
+        }
+    )
+else:
+    secrets_entries.update(
+        {
+            "LDAP_ENABLED": "false",
+            "LDAP_DOMAIN": "",
+            "LDAP_DEFAULT_ROLE": ldap_default_role,
+            "LDAP_ADMIN_GROUP": ldap_admin_group,
+            "LDAP_PO_GROUP": ldap_po_group,
+            "LDAP_SM_GROUP": ldap_sm_group,
+            "LDAP_STAKEHOLDER_GROUP": ldap_stakeholder_group,
+        }
+    )
+
+write_secrets_env(secrets_entries, "secrets.env")
+os.chmod("secrets.env", 0o600)
+
+is_active = agent.run_helper(
+    "systemctl", "--user", "is-active", "--quiet", "mdteam.service"
+)
+if is_active.returncode == 0:
+    agent.run_helper(
+        "systemctl", "--user", "restart", "mdteam-api.service"
+    ).check_returncode()

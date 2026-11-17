@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+
+import json
+import os
+import secrets
+import sys
+import agent
+
+sys.path.insert(
+    0,
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "bin")),
+)
+from mdteam_helpers import (  # noqa: E402
+    VALID_SCRUM_ROLES,
+    read_secrets_env,
+    sync_admin_password_in_volume,
+    write_secrets_env,
+)
+
+data = json.load(sys.stdin)
+
+host = data["host"].strip().lower()
+http2https = bool(data.get("http2https", True))
+lets_encrypt = bool(data.get("lets_encrypt", False))
+ldap_domain = (data.get("ldap_domain") or "").strip()
+
+raw_role = (
+    data.get("ldap_default_role")
+    or os.environ.get("LDAP_DEFAULT_ROLE")
+    or "developer"
+).strip()
+ldap_default_role = raw_role if raw_role in VALID_SCRUM_ROLES else "developer"
+
+ldap_admin_group = (
+    data["ldap_admin_group"]
+    if "ldap_admin_group" in data and data["ldap_admin_group"] is not None
+    else os.environ.get("LDAP_ADMIN_GROUP", "")
+).strip()
+ldap_po_group = (
+    data["ldap_po_group"]
+    if "ldap_po_group" in data and data["ldap_po_group"] is not None
+    else os.environ.get("LDAP_PO_GROUP", "")
+).strip()
+ldap_sm_group = (
+    data["ldap_sm_group"]
+    if "ldap_sm_group" in data and data["ldap_sm_group"] is not None
+    else os.environ.get("LDAP_SM_GROUP", "")
+).strip()
+ldap_stakeholder_group = (
+    data["ldap_stakeholder_group"]
+    if "ldap_stakeholder_group" in data and data["ldap_stakeholder_group"] is not None
+    else os.environ.get("LDAP_STAKEHOLDER_GROUP", "")
+).strip()
+
+admin_password = (
+    data.get("admin_password") or data.get("initial_password") or ""
+).strip()
+
+# Persist non-secret module environment and flush to disk BEFORE services start
+agent.set_env("TRAEFIK_HOST", host)
+agent.set_env("TRAEFIK_HTTP2HTTPS", str(http2https))
+agent.set_env("TRAEFIK_LETS_ENCRYPT", str(lets_encrypt))
+agent.set_env("LDAP_DOMAIN", ldap_domain)
+agent.set_env("LDAP_DEFAULT_ROLE", ldap_default_role)
+agent.set_env("LDAP_ADMIN_GROUP", ldap_admin_group)
+agent.set_env("LDAP_PO_GROUP", ldap_po_group)
+agent.set_env("LDAP_SM_GROUP", ldap_sm_group)
+agent.set_env("LDAP_STAKEHOLDER_GROUP", ldap_stakeholder_group)
+agent.dump_env()
+
+# Build secrets.env with persistent JWT secret and optional NS8 Ldapproxy binding
+existing_secrets = read_secrets_env("secrets.env")
+jwt_secret = existing_secrets.get("JWT_SECRET") or secrets.token_hex(32)
+persisted_password = admin_password or existing_secrets.get("MDTEAM_INITIAL_PASSWORD", "")
+
+secrets_entries = {
+    "JWT_SECRET": jwt_secret,
+    "MDTEAM_JWT_SECRET": jwt_secret,
+    "MDTEAM_COOKIE_SECURE": "true" if http2https else "false",
+}
+if persisted_password:
+    secrets_entries["MDTEAM_INITIAL_PASSWORD"] = persisted_password
+
+if ldap_domain:
+    from agent.ldapproxy import Ldapproxy
+
+    lp = Ldapproxy().get_domain(ldap_domain)
+    secrets_entries.update(
+        {
+            "LDAP_ENABLED": "true",
+            "LDAP_DOMAIN": ldap_domain,
+            "LDAP_HOST": "accountprovider",
+            "LDAP_PORT": str(lp["port"]),
+            "LDAP_SCHEMA": str(lp["schema"]),
+            "LDAP_BASE_DN": str(lp["base_dn"]),
+            "LDAP_BIND_DN": str(lp.get("bind_dn", "")),
+            "LDAP_BIND_PASSWORD": str(lp.get("bind_password", "")),
+            "LDAP_DEFAULT_ROLE": ldap_default_role,
+            "LDAP_ADMIN_GROUP": ldap_admin_group,
+            "LDAP_PO_GROUP": ldap_po_group,
+            "LDAP_SM_GROUP": ldap_sm_group,
+            "LDAP_STAKEHOLDER_GROUP": ldap_stakeholder_group,
+        }
+    )
+else:
+    secrets_entries.update(
+        {
+            "LDAP_ENABLED": "false",
+            "LDAP_DOMAIN": "",
+            "LDAP_DEFAULT_ROLE": ldap_default_role,
+            "LDAP_ADMIN_GROUP": ldap_admin_group,
+            "LDAP_PO_GROUP": ldap_po_group,
+            "LDAP_SM_GROUP": ldap_sm_group,
+            "LDAP_STAKEHOLDER_GROUP": ldap_stakeholder_group,
+        }
+    )
+
+write_secrets_env(secrets_entries, "secrets.env")
+os.chmod("secrets.env", 0o600)
+
+if admin_password:
+    sync_admin_password_in_volume(admin_password)
+
+# Register HTTP/HTTPS route with node Traefik instance
+tcp_port = os.environ["TCP_PORT"]
+response = agent.tasks.run(
+    agent_id=agent.resolve_agent_id("traefik@node"),
+    action="set-route",
+    data={
+        "instance": os.environ["MODULE_ID"],
+        "url": f"http://127.0.0.1:{tcp_port}",
+        "host": host,
+        "lets_encrypt": lets_encrypt,
+        "http2https": http2https,
+    },
+)
+agent.assert_exp(response["exit_code"] == 0)
