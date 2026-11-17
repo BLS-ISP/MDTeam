@@ -9,11 +9,13 @@ import {
   prepareGitAuthExecution,
   upsertStoredProjectRecord,
 } from "./gitCredentialsStore.js";
+import { withProjectGitLock } from "./gitMutex.js";
 import {
   execGitSafe,
   sanitizeGitRef,
-  sanitizeRemoteUrl,
+  sanitizeProjectId,
   sanitizeRepoRelativePath,
+  validateRemoteUrlWithDns,
 } from "./gitSanitizer.js";
 import { ensureProjectRepository } from "./serverGitBridge.js";
 
@@ -64,7 +66,7 @@ export async function getProjectGitStatus(rawProjectId: string): Promise<{
     undefined,
     true
   );
-  const porcelain = await execGitSafe(repoDir, ["status", "--porcelain"]);
+  const porcelain = await execGitSafe(repoDir, ["status", "--porcelain", "-uall"]);
   const conflictRes = await execGitSafe(
     repoDir,
     ["diff", "--name-only", "--diff-filter=U"],
@@ -137,137 +139,130 @@ export async function syncProjectGitRemote(
   conflicts: string[];
   message: string;
 }> {
-  const { projectId, repoDir } = await ensureProjectRepository(rawProjectId);
+  const projectId = sanitizeProjectId(rawProjectId);
+  return withProjectGitLock(projectId, async () => {
+    const { repoDir } = await ensureProjectRepository(projectId);
 
-  if (options.remoteUrl) {
-    const { cleanUrl, extractedUser, extractedToken } = extractEmbeddedUrlCredentials(
-      options.remoteUrl
-    );
-    const validatedUrl = sanitizeRemoteUrl(cleanUrl);
-    const existing = await execGitSafe(
-      repoDir,
-      ["remote", "get-url", "origin"],
-      author,
-      true
-    );
-    if (existing.exitCode === 0) {
-      await execGitSafe(repoDir, ["remote", "set-url", "origin", validatedUrl], author);
-    } else {
-      await execGitSafe(repoDir, ["remote", "add", "origin", validatedUrl], author);
+    if (options.remoteUrl) {
+      const { cleanUrl, extractedUser, extractedToken } = extractEmbeddedUrlCredentials(
+        options.remoteUrl
+      );
+      const validatedUrl = await validateRemoteUrlWithDns(cleanUrl);
+      const existing = await execGitSafe(repoDir, ["remote", "get-url", "origin"], author, true);
+      if (existing.exitCode === 0) {
+        await execGitSafe(repoDir, ["remote", "set-url", "origin", validatedUrl], author);
+      } else {
+        await execGitSafe(repoDir, ["remote", "add", "origin", validatedUrl], author);
+      }
+      await upsertStoredProjectRecord(
+        projectId,
+        {
+          remoteUrl: validatedUrl,
+          ...(extractedToken
+            ? {
+                authType: "https",
+                httpsUsername: extractedUser || "x-access-token",
+                httpsToken: extractedToken,
+              }
+            : {}),
+        },
+        author
+      );
     }
-    await upsertStoredProjectRecord(
-      projectId,
-      {
-        remoteUrl: validatedUrl,
-        ...(extractedToken
-          ? {
-              authType: "https",
-              httpsUsername: extractedUser || "x-access-token",
-              httpsToken: extractedToken,
-            }
-          : {}),
-      },
-      author
-    );
-  }
 
-  const remoteCheck = await execGitSafe(
-    repoDir,
-    ["remote", "get-url", "origin"],
-    author,
-    true
-  );
-  const effectiveRemoteUrl = remoteCheck.stdout.trim();
-  if (remoteCheck.exitCode !== 0 || !effectiveRemoteUrl) {
-    return {
-      ok: true,
-      hasConflicts: false,
-      conflicts: [],
-      message: "Local Git commit state verified (no remote 'origin' configured yet).",
-    };
-  }
+    const remoteCheck = await execGitSafe(repoDir, ["remote", "get-url", "origin"], author, true);
+    const effectiveRemoteUrl = remoteCheck.stdout.trim();
+    if (remoteCheck.exitCode !== 0 || !effectiveRemoteUrl) {
+      return {
+        ok: true,
+        hasConflicts: false,
+        conflicts: [],
+        message: "Local Git commit state verified (no remote 'origin' configured yet).",
+      };
+    }
 
-  sanitizeRemoteUrl(effectiveRemoteUrl);
-  const stored = await getStoredProjectRecord(projectId);
-  const authCtx = await prepareGitAuthExecution({
-    remoteUrl: effectiveRemoteUrl,
-    authType: stored?.authType || "none",
-    httpsUsername: stored?.httpsUsername || "",
-    httpsToken: stored?.encryptedToken ? decryptGitSecret(stored.encryptedToken) : "",
-    sshPrivateKey: stored?.encryptedSshPrivateKey
-      ? decryptGitSecret(stored.encryptedSshPrivateKey)
-      : "",
+    await validateRemoteUrlWithDns(effectiveRemoteUrl);
+    const stored = await getStoredProjectRecord(projectId);
+    const authCtx = await prepareGitAuthExecution({
+      remoteUrl: effectiveRemoteUrl,
+      authType: stored?.authType || "none",
+      httpsUsername: stored?.httpsUsername || "",
+      httpsToken: stored?.encryptedToken ? decryptGitSecret(stored.encryptedToken) : "",
+      sshPrivateKey: stored?.encryptedSshPrivateKey
+        ? decryptGitSecret(stored.encryptedSshPrivateKey)
+        : "",
+    });
+
+    try {
+      const branchRes = await execGitSafe(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"], author);
+      const targetBranch = options.branch
+        ? sanitizeGitRef(options.branch)
+        : sanitizeGitRef(branchRes.stdout.trim() || "master");
+      const direction = options.direction || "both";
+
+      if (direction === "pull" || direction === "both") {
+        const pullRes = await execGitSafe(
+          repoDir,
+          [...authCtx.gitConfigArgs, "pull", "--no-rebase", "origin", targetBranch],
+          author,
+          true,
+          authCtx.extraEnv
+        );
+        const conflictCheck = await execGitSafe(
+          repoDir,
+          ["diff", "--name-only", "--diff-filter=U"],
+          author,
+          true
+        );
+        const conflicts = conflictCheck.stdout
+          .split(/\r?\n/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+
+        if (conflicts.length > 0) {
+          return {
+            ok: false,
+            hasConflicts: true,
+            conflicts,
+            message: `Merge conflicts detected in ${conflicts.length} file(s)`,
+          };
+        }
+        if (pullRes.exitCode !== 0 && !pullRes.stderr.includes("couldn't find remote ref")) {
+          throw new HttpError(
+            502,
+            `Git pull failed: ${authCtx.redactSecrets(pullRes.stderr.trim() || pullRes.stdout.trim())}`,
+            "GIT_PULL_FAILED"
+          );
+        }
+      }
+
+      if (direction === "push" || direction === "both") {
+        const pushRes = await execGitSafe(
+          repoDir,
+          [...authCtx.gitConfigArgs, "push", "-u", "origin", targetBranch],
+          author,
+          true,
+          authCtx.extraEnv
+        );
+        if (pushRes.exitCode !== 0) {
+          throw new HttpError(
+            502,
+            `Git push failed: ${authCtx.redactSecrets(pushRes.stderr.trim() || pushRes.stdout.trim())}`,
+            "GIT_PUSH_FAILED"
+          );
+        }
+      }
+
+      return {
+        ok: true,
+        hasConflicts: false,
+        conflicts: [],
+        message: `Synchronized branch '${targetBranch}' with origin.`,
+      };
+    } finally {
+      await authCtx.cleanup();
+    }
   });
-
-  try {
-    const branchRes = await execGitSafe(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"], author);
-    const targetBranch = options.branch
-      ? sanitizeGitRef(options.branch)
-      : sanitizeGitRef(branchRes.stdout.trim() || "master");
-    const direction = options.direction || "both";
-
-    if (direction === "pull" || direction === "both") {
-      const pullRes = await execGitSafe(
-        repoDir,
-        [...authCtx.gitConfigArgs, "pull", "--no-rebase", "origin", targetBranch],
-        author,
-        true,
-        authCtx.extraEnv
-      );
-      const conflictCheck = await execGitSafe(
-        repoDir,
-        ["diff", "--name-only", "--diff-filter=U"],
-        author,
-        true
-      );
-      const conflicts = conflictCheck.stdout
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-      if (conflicts.length > 0) {
-        return {
-          ok: false,
-          hasConflicts: true,
-          conflicts,
-          message: `Merge conflicts detected in ${conflicts.length} file(s)`,
-        };
-      }
-      if (pullRes.exitCode !== 0 && !pullRes.stderr.includes("couldn't find remote ref")) {
-        throw new HttpError(
-          502,
-          `Git pull failed: ${authCtx.redactSecrets(pullRes.stderr.trim() || pullRes.stdout.trim())}`,
-          "GIT_PULL_FAILED"
-        );
-      }
-    }
-
-    if (direction === "push" || direction === "both") {
-      const pushRes = await execGitSafe(
-        repoDir,
-        [...authCtx.gitConfigArgs, "push", "-u", "origin", targetBranch],
-        author,
-        true,
-        authCtx.extraEnv
-      );
-      if (pushRes.exitCode !== 0) {
-        throw new HttpError(
-          502,
-          `Git push failed: ${authCtx.redactSecrets(pushRes.stderr.trim() || pushRes.stdout.trim())}`,
-          "GIT_PUSH_FAILED"
-        );
-      }
-    }
-
-    return {
-      ok: true,
-      hasConflicts: false,
-      conflicts: [],
-      message: `Synchronized branch '${targetBranch}' with origin.`,
-    };
-  } finally {
-    await authCtx.cleanup();
-  }
 }
 
 export async function inspectProjectConflicts(
@@ -334,40 +329,43 @@ export async function resolveProjectConflictFile(
     );
   }
 
-  const { repoDir } = await ensureProjectRepository(rawProjectId);
-  const { cleanRelPath, absolutePath } = sanitizeRepoRelativePath(repoDir, rawRelPath);
+  const projectId = sanitizeProjectId(rawProjectId);
+  return withProjectGitLock(projectId, async () => {
+    const { repoDir } = await ensureProjectRepository(projectId);
+    const { cleanRelPath, absolutePath } = sanitizeRepoRelativePath(repoDir, rawRelPath);
 
-  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.writeFile(absolutePath, resolvedContent, "utf8");
-  await execGitSafe(repoDir, ["add", "--", cleanRelPath], author);
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await fs.writeFile(absolutePath, resolvedContent, "utf8");
+    await execGitSafe(repoDir, ["add", "--", cleanRelPath], author);
 
-  const remRes = await execGitSafe(
-    repoDir,
-    ["diff", "--name-only", "--diff-filter=U"],
-    author,
-    true
-  );
-  const remainingConflicts = remRes.stdout
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+    const remRes = await execGitSafe(
+      repoDir,
+      ["diff", "--name-only", "--diff-filter=U"],
+      author,
+      true
+    );
+    const remainingConflicts = remRes.stdout
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
 
-  let committed = false;
-  if (autoCommit && remainingConflicts.length === 0) {
-    const status = await execGitSafe(repoDir, ["status", "--porcelain"], author);
-    if (status.stdout.trim()) {
-      await execGitSafe(
-        repoDir,
-        [
-          "commit",
-          "-m",
-          `merge(${cleanRelPath}): resolve conflict by ${author.handle || author.username}`,
-        ],
-        author
-      );
-      committed = true;
+    let committed = false;
+    if (autoCommit && remainingConflicts.length === 0) {
+      const status = await execGitSafe(repoDir, ["status", "--porcelain"], author);
+      if (status.stdout.trim()) {
+        await execGitSafe(
+          repoDir,
+          [
+            "commit",
+            "-m",
+            `merge(${cleanRelPath}): resolve conflict by ${author.handle || author.username}`,
+          ],
+          author
+        );
+        committed = true;
+      }
     }
-  }
 
-  return { resolvedPath: cleanRelPath, remainingConflicts, committed };
+    return { resolvedPath: cleanRelPath, remainingConflicts, committed };
+  });
 }

@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import dns from "node:dns";
+import net from "node:net";
 import path from "node:path";
 import { getDataDir, HttpError } from "../httpHelpers.js";
 import type { AuthUser } from "../types.js";
@@ -124,23 +126,44 @@ export function sanitizeGitRef(rawRef: string): string {
   return trimmed;
 }
 
+function isForbiddenLoopbackOrMetadataIp(rawIp: string): boolean {
+  const clean = rawIp.trim().toLowerCase().replace(/^\[|\]$/g, "").split("%")[0];
+  if (!clean) return true;
+  if (clean === "0.0.0.0" || /^0\./.test(clean)) return true;
+  if (/^127\./.test(clean) || /^169\.254\./.test(clean)) return true;
+  if (clean === "::" || clean === "::1" || /^(0+:){7}0*[01]$/.test(clean)) return true;
+  if (/^fe[89ab][0-9a-f]:/i.test(clean)) return true;
+
+  const v4Dotted = clean.match(/^(?:::ffff:|(?:0+:){5}ffff:)(\d+\.\d+\.\d+\.\d+)$/i);
+  if (v4Dotted) return isForbiddenLoopbackOrMetadataIp(v4Dotted[1]);
+
+  const v4Hex = clean.match(/^(?:::ffff:|(?:0+:){5}ffff:)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+  if (v4Hex) {
+    const hi = Number.parseInt(v4Hex[1], 16);
+    const lo = Number.parseInt(v4Hex[2], 16);
+    return isForbiddenLoopbackOrMetadataIp(`${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`);
+  }
+  return false;
+}
+
 function isBlockedLoopbackOrMetadataHost(host: string): boolean {
   const h = host.trim().toLowerCase().replace(/^\[|\]$/g, "");
-  if (!h) return true;
-  if (
-    h === "localhost" ||
-    h === "accountprovider" ||
-    h === "0.0.0.0" ||
-    h === "::1" ||
-    h === "0:0:0:0:0:0:0:1" ||
-    h.endsWith(".localhost")
-  ) {
+  if (!h || h === "localhost" || h === "accountprovider" || h.endsWith(".localhost")) {
     return true;
   }
-  if (/^127\./.test(h)) return true;
-  if (/^169\.254\./.test(h)) return true;
-  if (/^fe80:/i.test(h)) return true;
-  return false;
+  return isForbiddenLoopbackOrMetadataIp(h);
+}
+
+function extractRemoteHostname(trimmed: string): string {
+  if (/^(https?|ssh):\/\//i.test(trimmed)) {
+    try {
+      return new URL(trimmed).hostname.replace(/^\[|\]$/g, "");
+    } catch {
+      throw new HttpError(400, "Invalid Git remote URL syntax", "UNSAFE_REMOTE_URL");
+    }
+  }
+  const scpMatch = trimmed.match(/^git@([a-zA-Z0-9._-]+):/i);
+  return scpMatch ? scpMatch[1] : "";
 }
 
 export function sanitizeRemoteUrl(rawUrl: string): string {
@@ -179,19 +202,7 @@ export function sanitizeRemoteUrl(rawUrl: string): string {
     );
   }
 
-  let hostToCheck = "";
-  if (/^(https?|ssh):\/\//i.test(trimmed)) {
-    try {
-      const parsed = new URL(trimmed);
-      hostToCheck = parsed.hostname;
-    } catch {
-      throw new HttpError(400, "Invalid Git remote URL syntax", "UNSAFE_REMOTE_URL");
-    }
-  } else {
-    const scpMatch = trimmed.match(/^git@([a-zA-Z0-9._-]+):/i);
-    hostToCheck = scpMatch ? scpMatch[1] : "";
-  }
-
+  const hostToCheck = extractRemoteHostname(trimmed);
   if (!allowLocalTest && isBlockedLoopbackOrMetadataHost(hostToCheck)) {
     throw new HttpError(
       400,
@@ -201,6 +212,33 @@ export function sanitizeRemoteUrl(rawUrl: string): string {
   }
 
   return trimmed;
+}
+
+export async function validateRemoteUrlWithDns(rawUrl: string): Promise<string> {
+  const sanitized = sanitizeRemoteUrl(rawUrl);
+  if (!sanitized || process.env.MDTEAM_ALLOW_LOCAL_GIT_REMOTE === "1") {
+    return sanitized;
+  }
+  const host = extractRemoteHostname(sanitized);
+  if (!host || net.isIP(host) !== 0) {
+    return sanitized;
+  }
+  let records: Array<{ address: string; family: number }> = [];
+  try {
+    records = await dns.promises.lookup(host, { all: true });
+  } catch {
+    return sanitized;
+  }
+  for (const rec of records) {
+    if (isForbiddenLoopbackOrMetadataIp(rec.address)) {
+      throw new HttpError(
+        400,
+        `Git remote host '${host}' resolves to forbidden loopback or link-local metadata IP '${rec.address}'`,
+        "SSRF_DNS_REBIND_BLOCKED"
+      );
+    }
+  }
+  return sanitized;
 }
 
 export function execGitSafe(

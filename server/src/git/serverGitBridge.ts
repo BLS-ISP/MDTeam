@@ -7,6 +7,7 @@ import {
   listStoredProjectRecords,
   toPublicProjectSummary,
 } from "./gitCredentialsStore.js";
+import { withProjectGitLock } from "./gitMutex.js";
 import {
   execGitSafe,
   getReposBaseDir,
@@ -57,55 +58,44 @@ export async function ensureProjectRepository(rawProjectId: string): Promise<{
   const repoDir = resolveProjectDir(projectId);
   const gitDir = path.join(repoDir, ".git");
 
-  try {
-    const stat = await fs.stat(gitDir);
-    if (stat.isDirectory()) {
-      return { projectId, repoDir };
+  return withProjectGitLock(projectId, async () => {
+    try {
+      const stat = await fs.stat(gitDir);
+      if (stat.isDirectory()) return { projectId, repoDir };
+    } catch {
+      // Initialize fresh repository below
     }
-  } catch {
-    // Initialize fresh repository below
-  }
 
-  await fs.mkdir(repoDir, { recursive: true });
-  await execGitSafe(repoDir, ["init"]);
-  await execGitSafe(repoDir, ["config", "user.name", SYSTEM_GIT_AUTHOR.displayName]);
-  await execGitSafe(repoDir, ["config", "user.email", SYSTEM_GIT_AUTHOR.email]);
+    await fs.mkdir(repoDir, { recursive: true });
+    await execGitSafe(repoDir, ["init"]);
+    await execGitSafe(repoDir, ["config", "user.name", SYSTEM_GIT_AUTHOR.displayName]);
+    await execGitSafe(repoDir, ["config", "user.email", SYSTEM_GIT_AUTHOR.email]);
 
-  const welcomeDir = path.join(repoDir, "wiki");
-  await fs.mkdir(welcomeDir, { recursive: true });
-  const welcomeFile = path.join(welcomeDir, "welcome.md");
-  try {
-    await fs.access(welcomeFile);
-  } catch {
-    await fs.writeFile(welcomeFile, STARTER_README, "utf8");
-  }
+    const welcomeDir = path.join(repoDir, "wiki");
+    await fs.mkdir(welcomeDir, { recursive: true });
+    const welcomeFile = path.join(welcomeDir, "welcome.md");
+    try {
+      await fs.access(welcomeFile);
+    } catch {
+      await fs.writeFile(welcomeFile, STARTER_README, "utf8");
+    }
 
-  await execGitSafe(repoDir, ["add", "--", "."]);
-  const status = await execGitSafe(repoDir, ["status", "--porcelain"]);
-  if (status.stdout.trim()) {
-    await execGitSafe(
-      repoDir,
-      ["commit", "-m", "chore: initialize MDTeam project repository"],
-      SYSTEM_GIT_AUTHOR
-    );
-  }
-
-  return { projectId, repoDir };
+    await execGitSafe(repoDir, ["add", "--", "."]);
+    const status = await execGitSafe(repoDir, ["status", "--porcelain"]);
+    if (status.stdout.trim()) {
+      await execGitSafe(
+        repoDir,
+        ["commit", "-m", "chore: initialize MDTeam project repository"],
+        SYSTEM_GIT_AUTHOR
+      );
+    }
+    return { projectId, repoDir };
+  });
 }
 
 const IGNORED_SCAN_DIRS = new Set([
-  ".git",
-  "node_modules",
-  ".next",
-  "dist",
-  "build",
-  "out",
-  "target",
-  "vendor",
-  ".venv",
-  "venv",
-  "__pycache__",
-  ".cache",
+  ".git", "node_modules", ".next", "dist", "build", "out",
+  "target", "vendor", ".venv", "venv", "__pycache__", ".cache",
 ]);
 
 export async function listAvailableProjects(): Promise<string[]> {
@@ -194,12 +184,7 @@ async function walkProjectTree(
       const content = await fs.readFile(absPath, "utf8");
       const slashIdx = relPath.lastIndexOf("/");
       const category = slashIdx !== -1 ? relPath.slice(0, slashIdx) : "other";
-      filesOut.push({
-        path: relPath,
-        name: entry.name,
-        category,
-        content,
-      });
+      filesOut.push({ path: relPath, name: entry.name, category, content });
     }
   }
 }
@@ -236,43 +221,43 @@ export async function upsertProjectTextFile(
   rawRelPath: string,
   content: string,
   author: AuthUser,
-  customMessage?: string
+  customMessage?: string,
+  autoCommit = true
 ): Promise<{ file: ServerWorkspaceFile; committed: boolean; commitSha: string }> {
-  const { repoDir } = await ensureProjectRepository(rawProjectId);
-  const { cleanRelPath, absolutePath } = sanitizeRepoRelativePath(repoDir, rawRelPath);
+  const projectId = sanitizeProjectId(rawProjectId);
+  return withProjectGitLock(projectId, async () => {
+    const { repoDir } = await ensureProjectRepository(projectId);
+    const { cleanRelPath, absolutePath } = sanitizeRepoRelativePath(repoDir, rawRelPath);
 
-  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.writeFile(absolutePath, content, "utf8");
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await fs.writeFile(absolutePath, content, "utf8");
 
-  await execGitSafe(repoDir, ["add", "--", cleanRelPath], author);
-  const statusRes = await execGitSafe(repoDir, [
-    "status",
-    "--porcelain",
-    "--",
-    cleanRelPath,
-  ]);
+    let committed = false;
+    if (autoCommit) {
+      await execGitSafe(repoDir, ["add", "--", cleanRelPath], author);
+      const statusRes = await execGitSafe(repoDir, ["status", "--porcelain", "--", cleanRelPath]);
+      if (statusRes.stdout.trim().length > 0) {
+        const msg =
+          (customMessage || "").trim() ||
+          `docs(${cleanRelPath}): update by ${author.handle || author.username}`;
+        await execGitSafe(repoDir, ["commit", "-m", msg, "--", cleanRelPath], author);
+        committed = true;
+      }
+    }
 
-  let committed = false;
-  if (statusRes.stdout.trim().length > 0) {
-    const msg =
-      (customMessage || "").trim() ||
-      `docs(${cleanRelPath}): update by ${author.handle || author.username}`;
-    await execGitSafe(repoDir, ["commit", "-m", msg, "--", cleanRelPath], author);
-    committed = true;
-  }
-
-  const headRes = await execGitSafe(repoDir, ["rev-parse", "--short", "HEAD"], author, true);
-  const slashIdx = cleanRelPath.lastIndexOf("/");
-  return {
-    file: {
-      path: cleanRelPath,
-      name: slashIdx !== -1 ? cleanRelPath.slice(slashIdx + 1) : cleanRelPath,
-      category: slashIdx !== -1 ? cleanRelPath.slice(0, slashIdx) : "other",
-      content,
-    },
-    committed,
-    commitSha: headRes.stdout.trim(),
-  };
+    const headRes = await execGitSafe(repoDir, ["rev-parse", "--short", "HEAD"], author, true);
+    const slashIdx = cleanRelPath.lastIndexOf("/");
+    return {
+      file: {
+        path: cleanRelPath,
+        name: slashIdx !== -1 ? cleanRelPath.slice(slashIdx + 1) : cleanRelPath,
+        category: slashIdx !== -1 ? cleanRelPath.slice(0, slashIdx) : "other",
+        content,
+      },
+      committed,
+      commitSha: headRes.stdout.trim(),
+    };
+  });
 }
 
 export async function deleteProjectFile(
@@ -281,42 +266,34 @@ export async function deleteProjectFile(
   author: AuthUser,
   customMessage?: string
 ): Promise<{ deletedPath: string; committed: boolean }> {
-  const { repoDir } = await ensureProjectRepository(rawProjectId);
-  const { cleanRelPath, absolutePath } = sanitizeRepoRelativePath(repoDir, rawRelPath);
+  const projectId = sanitizeProjectId(rawProjectId);
+  return withProjectGitLock(projectId, async () => {
+    const { repoDir } = await ensureProjectRepository(projectId);
+    const { cleanRelPath, absolutePath } = sanitizeRepoRelativePath(repoDir, rawRelPath);
 
-  try {
-    await fs.access(absolutePath);
-  } catch {
-    throw new HttpError(404, `File '${cleanRelPath}' does not exist`, "FILE_NOT_FOUND");
-  }
+    try {
+      await fs.access(absolutePath);
+    } catch {
+      throw new HttpError(404, `File '${cleanRelPath}' does not exist`, "FILE_NOT_FOUND");
+    }
 
-  const rmRes = await execGitSafe(
-    repoDir,
-    ["rm", "-f", "--", cleanRelPath],
-    author,
-    true
-  );
-  if (rmRes.exitCode !== 0) {
-    await fs.unlink(absolutePath);
-    await execGitSafe(repoDir, ["add", "-A", "--", cleanRelPath], author, true);
-  }
+    const rmRes = await execGitSafe(repoDir, ["rm", "-f", "--", cleanRelPath], author, true);
+    if (rmRes.exitCode !== 0) {
+      await fs.unlink(absolutePath);
+      await execGitSafe(repoDir, ["add", "-A", "--", cleanRelPath], author, true);
+    }
 
-  const statusRes = await execGitSafe(repoDir, [
-    "status",
-    "--porcelain",
-    "--",
-    cleanRelPath,
-  ]);
-  let committed = false;
-  if (statusRes.stdout.trim().length > 0) {
-    const msg =
-      (customMessage || "").trim() ||
-      `chore(${cleanRelPath}): delete by ${author.handle || author.username}`;
-    await execGitSafe(repoDir, ["commit", "-m", msg], author);
-    committed = true;
-  }
-
-  return { deletedPath: cleanRelPath, committed };
+    const statusRes = await execGitSafe(repoDir, ["status", "--porcelain", "--", cleanRelPath]);
+    let committed = false;
+    if (statusRes.stdout.trim().length > 0) {
+      const msg =
+        (customMessage || "").trim() ||
+        `chore(${cleanRelPath}): delete by ${author.handle || author.username}`;
+      await execGitSafe(repoDir, ["commit", "-m", msg], author);
+      committed = true;
+    }
+    return { deletedPath: cleanRelPath, committed };
+  });
 }
 
 export async function uploadProjectBinaryAsset(
@@ -325,47 +302,45 @@ export async function uploadProjectBinaryAsset(
   base64Payload: string,
   author: AuthUser
 ): Promise<{ assetPath: string; sizeBytes: number; commitSha: string }> {
-  const { repoDir } = await ensureProjectRepository(rawProjectId);
-  const normalizedTarget = rawAssetPath.replace(/\\/g, "/").replace(/^\/+/, "");
-  const prefixedPath = normalizedTarget.startsWith("assets/")
-    ? normalizedTarget
-    : `assets/${normalizedTarget}`;
+  const projectId = sanitizeProjectId(rawProjectId);
+  return withProjectGitLock(projectId, async () => {
+    const { repoDir } = await ensureProjectRepository(projectId);
+    const normalizedTarget = rawAssetPath.replace(/\\/g, "/").replace(/^\/+/, "");
+    const prefixedPath = normalizedTarget.startsWith("assets/")
+      ? normalizedTarget
+      : `assets/${normalizedTarget}`;
 
-  const { cleanRelPath, absolutePath } = sanitizeRepoRelativePath(repoDir, prefixedPath);
-  const strippedBase64 = base64Payload.replace(/^data:[^;]+;base64,/, "").trim();
-  if (!strippedBase64) {
-    throw new HttpError(400, "Empty base64 asset payload", "EMPTY_ASSET");
-  }
+    const { cleanRelPath, absolutePath } = sanitizeRepoRelativePath(repoDir, prefixedPath);
+    const strippedBase64 = base64Payload.replace(/^data:[^;]+;base64,/, "").trim();
+    if (!strippedBase64) {
+      throw new HttpError(400, "Empty base64 asset payload", "EMPTY_ASSET");
+    }
 
-  const binaryBuffer = Buffer.from(strippedBase64, "base64");
-  if (binaryBuffer.length > 12 * 1024 * 1024) {
-    throw new HttpError(413, "Binary asset exceeds 12 MB limit", "ASSET_TOO_LARGE");
-  }
+    const binaryBuffer = Buffer.from(strippedBase64, "base64");
+    if (binaryBuffer.length > 12 * 1024 * 1024) {
+      throw new HttpError(413, "Binary asset exceeds 12 MB limit", "ASSET_TOO_LARGE");
+    }
 
-  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.writeFile(absolutePath, binaryBuffer);
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await fs.writeFile(absolutePath, binaryBuffer);
 
-  await execGitSafe(repoDir, ["add", "--", cleanRelPath], author);
-  const statusRes = await execGitSafe(repoDir, [
-    "status",
-    "--porcelain",
-    "--",
-    cleanRelPath,
-  ]);
-  if (statusRes.stdout.trim()) {
-    await execGitSafe(
-      repoDir,
-      ["commit", "-m", `asset(${cleanRelPath}): upload by ${author.handle}`],
-      author
-    );
-  }
-  const headRes = await execGitSafe(repoDir, ["rev-parse", "--short", "HEAD"], author, true);
+    await execGitSafe(repoDir, ["add", "--", cleanRelPath], author);
+    const statusRes = await execGitSafe(repoDir, ["status", "--porcelain", "--", cleanRelPath]);
+    if (statusRes.stdout.trim()) {
+      await execGitSafe(
+        repoDir,
+        ["commit", "-m", `asset(${cleanRelPath}): upload by ${author.handle}`],
+        author
+      );
+    }
+    const headRes = await execGitSafe(repoDir, ["rev-parse", "--short", "HEAD"], author, true);
 
-  return {
-    assetPath: cleanRelPath,
-    sizeBytes: binaryBuffer.length,
-    commitSha: headRes.stdout.trim(),
-  };
+    return {
+      assetPath: cleanRelPath,
+      sizeBytes: binaryBuffer.length,
+      commitSha: headRes.stdout.trim(),
+    };
+  });
 }
 
 export async function readProjectBinaryAsset(
@@ -379,12 +354,59 @@ export async function readProjectBinaryAsset(
 
   try {
     const buffer = await fs.readFile(absolutePath);
-    return {
-      buffer,
-      mimeType: inferAssetMimeType(cleanRelPath),
-      assetPath: cleanRelPath,
-    };
+    return { buffer, mimeType: inferAssetMimeType(cleanRelPath), assetPath: cleanRelPath };
   } catch {
     throw new HttpError(404, `Asset '${cleanRelPath}' not found`, "ASSET_NOT_FOUND");
   }
+}
+
+const ALLOWED_CODE_EXTENSIONS = new Set([
+  ".md", ".txt", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
+  ".json", ".yml", ".yaml", ".toml", ".rs", ".py", ".go", ".java",
+  ".cs", ".c", ".cpp", ".h", ".hpp", ".css", ".scss", ".html",
+  ".sql", ".sh", ".dockerfile",
+]);
+
+function isSensitiveCodePath(lowerPath: string, baseName: string): boolean {
+  return (
+    baseName === ".env" ||
+    baseName.startsWith(".env.") ||
+    baseName.endsWith(".env") ||
+    lowerPath.includes("secret") ||
+    /\.(pem|key|p12|pfx)$/.test(lowerPath) ||
+    baseName === "id_rsa" ||
+    baseName === "id_ed25519"
+  );
+}
+
+export async function readProjectCodeSnippet(
+  rawProjectId: string,
+  rawRelPath: string
+): Promise<{ path: string; content: string }> {
+  const { repoDir } = await ensureProjectRepository(rawProjectId);
+  const { cleanRelPath, absolutePath } = sanitizeRepoRelativePath(repoDir, rawRelPath);
+  const lowerPath = cleanRelPath.toLowerCase();
+  const baseName = path.posix.basename(lowerPath);
+
+  if (isSensitiveCodePath(lowerPath, baseName)) {
+    throw new HttpError(403, "Access to sensitive configuration or key files is forbidden", "FORBIDDEN_SENSITIVE_FILE");
+  }
+  const ext = path.posix.extname(lowerPath);
+  if (!ALLOWED_CODE_EXTENSIONS.has(ext) && baseName !== "dockerfile") {
+    throw new HttpError(400, `File extension '${ext || baseName}' is not permitted`, "UNSUPPORTED_CODE_EXTENSION");
+  }
+
+  const stat = await fs.lstat(absolutePath).catch(() => null);
+  if (!stat) throw new HttpError(404, `Code file '${cleanRelPath}' not found`, "FILE_NOT_FOUND");
+  if (stat.isSymbolicLink()) throw new HttpError(403, "Symbolic links are forbidden", "SYMLINK_FORBIDDEN");
+  if (!stat.isFile()) throw new HttpError(400, `'${cleanRelPath}' is not a regular file`, "NOT_A_FILE");
+
+  const [realRepo, realFile] = await Promise.all([fs.realpath(repoDir), fs.realpath(absolutePath)]);
+  if (!realFile.startsWith(realRepo + path.sep)) {
+    throw new HttpError(403, "Symbolic link target escapes repository boundary", "SYMLINK_FORBIDDEN");
+  }
+  if (stat.size > 512 * 1024) {
+    throw new HttpError(413, "Code file exceeds 512 KB inspection limit", "CODE_FILE_TOO_LARGE");
+  }
+  return { path: cleanRelPath, content: await fs.readFile(absolutePath, "utf8") };
 }
