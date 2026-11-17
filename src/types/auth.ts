@@ -42,6 +42,7 @@ export type ScrumAction =
   | "edit_issue"
   | "edit_wiki"
   | "approve_wiki"
+  | "connect_git_repo"
   | "comment_or_feedback"
   | "manage_users";
 
@@ -93,6 +94,13 @@ export interface ServerConflictEntry {
   working: string;
 }
 
+export interface ServerCommitSummary {
+  hash: string;
+  message: string;
+  author: string;
+  date: string;
+}
+
 export interface ServerGitStatusSummary {
   projectId: string;
   branch: string;
@@ -103,6 +111,32 @@ export interface ServerGitStatusSummary {
   modified: string[];
   untracked: string[];
   conflicts: string[];
+  recentCommits?: ServerCommitSummary[];
+}
+
+export type GitAuthType = "none" | "https" | "ssh";
+export type ProjectVisibility = "team" | "private";
+
+export interface ServerProjectSummary {
+  projectId: string;
+  displayName: string;
+  remoteUrl: string;
+  authType: GitAuthType;
+  httpsUsername: string;
+  hasToken: boolean;
+  hasSshKey: boolean;
+  sshPublicKey: string;
+  defaultBranch: string;
+  visibility: ProjectVisibility;
+  ownerId: string;
+  ownerHandle: string;
+  createdAt: string;
+}
+
+export interface ServerBranchInfo {
+  name: string;
+  isCurrent: boolean;
+  isRemote?: boolean;
 }
 
 const SCRUM_PERMISSIONS: Record<ScrumRole, ReadonlySet<ScrumAction>> = {
@@ -115,6 +149,7 @@ const SCRUM_PERMISSIONS: Record<ScrumRole, ReadonlySet<ScrumAction>> = {
     "edit_issue",
     "edit_wiki",
     "approve_wiki",
+    "connect_git_repo",
     "comment_or_feedback",
     "manage_users",
   ]),
@@ -126,6 +161,7 @@ const SCRUM_PERMISSIONS: Record<ScrumRole, ReadonlySet<ScrumAction>> = {
     "edit_issue",
     "edit_wiki",
     "approve_wiki",
+    "connect_git_repo",
     "comment_or_feedback",
   ]),
   "scrum-master": new Set<ScrumAction>([
@@ -134,12 +170,14 @@ const SCRUM_PERMISSIONS: Record<ScrumRole, ReadonlySet<ScrumAction>> = {
     "edit_issue",
     "edit_wiki",
     "approve_wiki",
+    "connect_git_repo",
     "comment_or_feedback",
   ]),
   developer: new Set<ScrumAction>([
     "pull_to_sprint",
     "edit_issue",
     "edit_wiki",
+    "connect_git_repo",
     "comment_or_feedback",
   ]),
   stakeholder: new Set<ScrumAction>(["comment_or_feedback"]),

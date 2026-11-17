@@ -50,12 +50,33 @@ export async function loadCombinedPageVersions(
   activeFile: WorkspaceFile,
   isTauri: boolean,
   tauriRootFolder: string | undefined,
-  currentUser: string
+  currentUser: string,
+  onFetchServerHistory?: (
+    filePath: string
+  ) => Promise<Array<{ hash: string; message: string; author: string; date: string }>>
 ): Promise<PageVersionEntry[]> {
   const combined: PageVersionEntry[] = [];
 
+  if (onFetchServerHistory) {
+    try {
+      const serverCommits = await onFetchServerHistory(activeFile.path);
+      for (const c of serverCommits) {
+        combined.push({
+          id: `git-${c.hash}`,
+          commitHash: c.hash,
+          message: c.message || "Commit",
+          author: c.author || "Git Author",
+          date: c.date || "",
+          source: "git",
+        });
+      }
+    } catch (err) {
+      console.warn("Server git history unavailable, falling back to snapshots:", err);
+    }
+  }
+
   // 1. Try native Git history when running inside Tauri with an open repository
-  if (isTauri && tauriRootFolder) {
+  if (combined.length === 0 && isTauri && tauriRootFolder) {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       const rawLog = await invoke<string>("git_file_history", {

@@ -115,6 +115,8 @@ export function useWorkspaceServerBridge({
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isTeamAdminModalOpen, setIsTeamAdminModalOpen] = useState(false);
   const [isConflictModalOpen, setIsConflictModalOpen] = useState(false);
+  const [isGitRepoModalOpen, setIsGitRepoModalOpen] = useState(false);
+  const [gitRepoModalInitialTab, setGitRepoModalInitialTab] = useState<"clone" | "remote" | "blank">("clone");
   const [tauriConflicts, setTauriConflicts] = useState<string[]>([]);
   const debounceTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -355,6 +357,11 @@ export function useWorkspaceServerBridge({
   const storedSessionToken =
     typeof window !== "undefined" ? localStorage.getItem("mdteam_session_token") || "" : "";
 
+  const openGitRepoModal = useCallback((tab: "clone" | "remote" | "blank" = "clone") => {
+    setGitRepoModalInitialTab(tab);
+    setIsGitRepoModalOpen(true);
+  }, []);
+
   return {
     ...serverBackend,
     sessionToken: storedSessionToken,
@@ -367,6 +374,11 @@ export function useWorkspaceServerBridge({
     setIsTeamAdminModalOpen,
     isConflictModalOpen,
     setIsConflictModalOpen,
+    isGitRepoModalOpen,
+    setIsGitRepoModalOpen,
+    gitRepoModalInitialTab,
+    setGitRepoModalInitialTab,
+    openGitRepoModal,
     conflictPaths,
     conflictCount: conflictPaths.length,
     refreshConflicts,

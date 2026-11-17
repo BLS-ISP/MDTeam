@@ -103,6 +103,11 @@ export interface PageHistoryModalProps {
   activeFile: WorkspaceFile;
   isTauri: boolean;
   tauriRootFolder?: string;
+  serverGitEnabled?: boolean;
+  onFetchServerHistory?: (
+    filePath: string
+  ) => Promise<Array<{ hash: string; message: string; author: string; date: string }>>;
+  onFetchServerFileAtCommit?: (sha: string, filePath: string) => Promise<string>;
   currentUser?: string;
   language?: "de" | "en";
   onClose: () => void;

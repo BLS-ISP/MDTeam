@@ -21,6 +21,7 @@ import {
   GitBranchModal,
 } from "../CommandPaletteAndModals";
 import { AuthLoginModal, TeamAndWebhookAdminModal } from "../auth";
+import { GitRepositoryConnectModal } from "../git/GitRepositoryConnectModal";
 import { GitConflictResolverModal } from "../modals/GitConflictResolverModal";
 import { INITIAL_FILES } from "../../constants/seedFiles";
 import { useWorkspaceContext } from "../../context/WorkspaceContext";
@@ -93,6 +94,10 @@ export function WorkspaceModalsHost() {
     startOidcLogin,
     setCustomServerUrl,
     refreshTeamAndProjects,
+    listServerBranches,
+    checkoutServerBranch,
+    fetchServerFileHistory,
+    fetchServerFileAtCommit,
     isAuthModalOpen,
     setIsAuthModalOpen,
     isTeamAdminModalOpen,
@@ -106,6 +111,7 @@ export function WorkspaceModalsHost() {
   return (
     <>
       <WorkspaceQuickDialogs />
+      <GitRepositoryConnectModal />
 
       {/* Multi-User Authentication & Enterprise OIDC SSO Modal */}
       <AuthLoginModal
@@ -227,6 +233,12 @@ export function WorkspaceModalsHost() {
         }}
         isTauri={isTauri}
         tauriRootFolder={tauriRootFolder || null}
+        serverGitEnabled={Boolean(serverMode && authUser)}
+        projectId={activeProjectId}
+        onListServerBranches={() => listServerBranches(activeProjectId)}
+        onCheckoutServerBranch={(branch, createNew) =>
+          checkoutServerBranch(branch, createNew, activeProjectId)
+        }
         initialNewBranchName={pendingBranchName}
         currentBranch={activeBranch}
         activeBranch={activeBranch}
@@ -282,6 +294,9 @@ export function WorkspaceModalsHost() {
           activeFile={activeFile}
           isTauri={isTauri}
           tauriRootFolder={tauriRootFolder}
+          serverGitEnabled={Boolean(serverMode && authUser)}
+          onFetchServerHistory={(fp) => fetchServerFileHistory(fp, 25)}
+          onFetchServerFileAtCommit={(sha, fp) => fetchServerFileAtCommit(sha, fp)}
           currentUser={currentUser}
           language={language}
           onClose={() => setIsPageHistoryOpen(false)}

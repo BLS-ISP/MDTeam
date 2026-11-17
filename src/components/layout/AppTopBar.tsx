@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { KeyRound, ShieldCheck, Sparkles, Users } from "lucide-react";
+import { FolderGit2, KeyRound, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { WorkspaceHeaderControls } from "../CommandPaletteAndModals";
 import { getRoleBadgeMeta } from "../auth";
 import { canRolePerform } from "../../types/auth";
@@ -28,6 +28,9 @@ export function AppTopBar() {
     setIsImportModalOpen,
     serverMode,
     authUser,
+    activeProjectId,
+    canPerformAction,
+    openGitRepoModal,
     isStakeholderReadOnly,
     setIsAuthModalOpen,
     setIsTeamAdminModalOpen,
@@ -95,6 +98,36 @@ export function AppTopBar() {
               : "Server / Login"}
           </span>
         </button>
+
+        {/* Online Git Repository Quick Connect Trigger (Developers / SM / PO / Admin) */}
+        {serverMode && authUser && canPerformAction("connect_git_repo") && (
+          <button
+            type="button"
+            onClick={() => openGitRepoModal("clone")}
+            title={
+              language === "en"
+                ? `Clone or Manage Online Git Repository (${activeProjectId})`
+                : `Git-Repository klonen oder verwalten (${activeProjectId})`
+            }
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              height: "28px",
+              padding: "0 9px",
+              borderRadius: "6px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-panel)",
+              color: "var(--text-secondary)",
+              fontSize: "11px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            <FolderGit2 size={12} style={{ color: "var(--accent-green)" }} />
+            <span>{language === "en" ? "Git Repo" : "Git-Repo"}</span>
+          </button>
+        )}
 
         {/* Team RBAC & Webhooks Admin Trigger */}
         {canOpenAdmin && (

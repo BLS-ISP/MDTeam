@@ -6,11 +6,16 @@ import {
   requireRoleAction,
 } from "../auth/jwtSession.js";
 import {
+  assertProjectAccess,
+  toPublicProjectSummary,
+  upsertStoredProjectRecord,
+} from "../git/gitCredentialsStore.js";
+import {
   deleteProjectFile,
   ensureProjectRepository,
   getProjectGitStatus,
   inspectProjectConflicts,
-  listAvailableProjects,
+  listAccessibleProjectsForUser,
   listProjectFilesAndAssets,
   readProjectBinaryAsset,
   readProjectTextFileIfExists,
@@ -20,6 +25,11 @@ import {
   upsertProjectTextFile,
 } from "../git/serverGitBridge.js";
 import { HttpError, readJsonBody, sendError, sendJson } from "../httpHelpers.js";
+import type { ProjectVisibility } from "../types.js";
+import {
+  handleProjectGitSubRoutes,
+  handleProjectGitTopRoutes,
+} from "./projectGitRoutes.js";
 
 function safeDecodeSegment(raw: string): string {
   try {
@@ -41,19 +51,38 @@ export async function handleProjectRoutes(
     if (method === "GET") {
       const user = await requireAuthenticatedUser(req, res);
       if (!user) return true;
-      const projects = await listAvailableProjects();
-      sendJson(res, 200, { projects });
+      const { projects, projectDetails } = await listAccessibleProjectsForUser(user);
+      sendJson(res, 200, { projects, projectDetails });
       return true;
     }
     if (method === "POST") {
-      const user = await requireRoleAction(req, res, "edit_wiki");
+      const user = await requireRoleAction(req, res, "connect_git_repo");
       if (!user) return true;
-      const body = await readJsonBody<{ projectId?: string }>(req);
+      const body = await readJsonBody<{
+        projectId?: string;
+        displayName?: string;
+        visibility?: ProjectVisibility;
+      }>(req);
       const created = await ensureProjectRepository(body.projectId || "");
-      sendJson(res, 201, { projectId: created.projectId });
+      const meta = await upsertStoredProjectRecord(
+        created.projectId,
+        {
+          displayName: body.displayName || created.projectId,
+          visibility: body.visibility === "private" ? "private" : "team",
+        },
+        user
+      );
+      sendJson(res, 201, {
+        projectId: created.projectId,
+        project: toPublicProjectSummary(meta),
+      });
       return true;
     }
     return false;
+  }
+
+  if (await handleProjectGitTopRoutes(req, res, pathname, method)) {
+    return true;
   }
 
   const prefix = "/api/projects/";
@@ -66,10 +95,15 @@ export async function handleProjectRoutes(
   const projectId = safeDecodeSegment(rest.slice(0, slashIdx));
   const subRoute = rest.slice(slashIdx); // starts with '/'
 
+  if (await handleProjectGitSubRoutes(req, res, url, projectId, subRoute, method)) {
+    return true;
+  }
+
   // Binary asset serving: GET /api/projects/:id/assets/*
   if (subRoute.startsWith("/assets/") && method === "GET") {
     const user = await requireAuthenticatedUser(req, res);
     if (!user) return true;
+    await assertProjectAccess(projectId, user);
     const assetRel = safeDecodeSegment(subRoute.slice("/assets/".length));
     const { buffer, mimeType } = await readProjectBinaryAsset(projectId, assetRel);
     res.statusCode = 200;
@@ -88,6 +122,7 @@ export async function handleProjectRoutes(
   if ((subRoute === "/assets" || subRoute === "/assets/") && method === "POST") {
     const user = await requireAuthenticatedUser(req, res);
     if (!user) return true;
+    await assertProjectAccess(projectId, user);
     enforceFileMutationPermission(user, "assets/upload.bin", null, null);
 
     const body = await readJsonBody<{
@@ -128,6 +163,7 @@ export async function handleProjectRoutes(
     if (method === "GET") {
       const user = await requireAuthenticatedUser(req, res);
       if (!user) return true;
+      await assertProjectAccess(projectId, user);
       const singlePath = wildcardRel || url.searchParams.get("path") || "";
       if (singlePath) {
         const content = await readProjectTextFileIfExists(projectId, singlePath);
@@ -146,6 +182,7 @@ export async function handleProjectRoutes(
     if (method === "PUT" || method === "POST") {
       const user = await requireAuthenticatedUser(req, res);
       if (!user) return true;
+      await assertProjectAccess(projectId, user);
 
       const body = await readJsonBody<{
         path?: string;
@@ -215,6 +252,7 @@ export async function handleProjectRoutes(
     if (method === "DELETE") {
       const user = await requireAuthenticatedUser(req, res);
       if (!user) return true;
+      await assertProjectAccess(projectId, user);
       const body =
         wildcardRel || url.searchParams.get("path")
           ? ({} as { path?: string; message?: string })
@@ -237,6 +275,7 @@ export async function handleProjectRoutes(
   if (subRoute === "/git/status" && method === "GET") {
     const user = await requireAuthenticatedUser(req, res);
     if (!user) return true;
+    await assertProjectAccess(projectId, user);
     const status = await getProjectGitStatus(projectId);
     sendJson(res, 200, status);
     return true;
@@ -244,8 +283,9 @@ export async function handleProjectRoutes(
 
   // Git pull/push sync: POST /api/projects/:id/git/sync
   if (subRoute === "/git/sync" && method === "POST") {
-    const user = await requireRoleAction(req, res, "edit_wiki");
+    const user = await requireRoleAction(req, res, "connect_git_repo");
     if (!user) return true;
+    await assertProjectAccess(projectId, user);
     const body = await readJsonBody<{
       remoteUrl?: string;
       branch?: string;
@@ -260,6 +300,7 @@ export async function handleProjectRoutes(
   if (subRoute === "/git/conflicts" && method === "GET") {
     const user = await requireAuthenticatedUser(req, res);
     if (!user) return true;
+    await assertProjectAccess(projectId, user);
     const specificFile = url.searchParams.get("file") || undefined;
     const inspected = await inspectProjectConflicts(projectId, specificFile);
     const versionsMap: Record<string, (typeof inspected.items)[number]> = {};
@@ -278,6 +319,7 @@ export async function handleProjectRoutes(
   if (subRoute === "/git/resolve" && method === "POST") {
     const user = await requireRoleAction(req, res, "edit_wiki");
     if (!user) return true;
+    await assertProjectAccess(projectId, user);
     const body = await readJsonBody<{
       path?: string;
       filePath?: string;

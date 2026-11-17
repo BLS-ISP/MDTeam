@@ -14,6 +14,7 @@ import {
 import { useWorkspaceContext } from "../../context/WorkspaceContext";
 import { PageTreeNodeView } from "./PageTreeNodeView";
 import { RenameMovePageModal } from "./RenameMovePageModal";
+import { ServerProjectsBar } from "./ServerProjectsBar";
 
 export function ExplorerPanel() {
   const {
@@ -159,6 +160,8 @@ export function ExplorerPanel() {
             </button>
           </div>
         </div>
+
+        <ServerProjectsBar />
 
         {isTauri && (
           <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: "6px", backgroundColor: "rgba(255,255,255,0.01)" }}>

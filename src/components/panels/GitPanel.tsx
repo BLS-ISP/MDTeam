@@ -1,7 +1,16 @@
 "use client";
 
-import React from "react";
-import { AlertTriangle, Download, GitBranch, GitMerge, RefreshCw } from "lucide-react";
+import React, { useState } from "react";
+import {
+  AlertTriangle,
+  Download,
+  FolderGit2,
+  GitBranch,
+  GitMerge,
+  Link2,
+  RefreshCw,
+  Upload,
+} from "lucide-react";
 import { useWorkspaceContext } from "../../context/WorkspaceContext";
 
 export function GitPanel() {
@@ -10,6 +19,7 @@ export function GitPanel() {
     language,
     files,
     modifiedFiles,
+    setModifiedFiles,
     commitMessage,
     setCommitMessage,
     handleCommit,
@@ -22,12 +32,83 @@ export function GitPanel() {
     setIsConflictModalOpen,
     serverMode,
     authUser,
+    gitStatus,
+    canPerformAction,
+    syncUpsertServerFile,
+    commitServerChanges,
     syncServerGitRemote,
+    openGitRepoModal,
     isStakeholderReadOnly,
   } = useWorkspaceContext();
 
   const isEn = language === "en";
-  const changedPaths = Object.keys(modifiedFiles).filter((k) => modifiedFiles[k]);
+  const [syncNotice, setSyncNotice] = useState("");
+  const [syncError, setSyncError] = useState("");
+  const [isGitBusy, setIsGitBusy] = useState(false);
+
+  const isOnlineGit = Boolean(serverMode && authUser);
+  const canConnectRepo = canPerformAction("connect_git_repo");
+  const localChangedPaths = Object.keys(modifiedFiles).filter((k) => modifiedFiles[k]);
+  const serverDirtyPaths = [
+    ...(gitStatus?.modified || []),
+    ...(gitStatus?.untracked || []),
+  ];
+  const changedPaths = Array.from(new Set([...localChangedPaths, ...(isOnlineGit ? serverDirtyPaths : [])]));
+
+  const displayCommits =
+    isOnlineGit && gitStatus?.recentCommits && gitStatus.recentCommits.length > 0
+      ? gitStatus.recentCommits
+      : commits;
+
+  const handleOnlineCommitAndPush = async () => {
+    if (!commitMessage.trim() || isStakeholderReadOnly) return;
+    setSyncError("");
+    setSyncNotice("");
+    setIsGitBusy(true);
+    try {
+      for (const p of localChangedPaths) {
+        const f = files.find((item) => item.path === p);
+        if (f) {
+          await syncUpsertServerFile(f, "edit_wiki", commitMessage.trim());
+        }
+      }
+      const shouldPush = Boolean(gitStatus?.remoteUrl);
+      const res = await commitServerChanges(commitMessage.trim(), shouldPush);
+      setModifiedFiles({});
+      setCommitMessage("");
+      setSyncNotice(
+        res.pushed
+          ? isEn
+            ? `Committed (${res.commitSha}) & pushed to origin.`
+            : `Committet (${res.commitSha}) & an origin gepusht.`
+          : isEn
+          ? `Committed (${res.commitSha}) on server.`
+          : `Auf Server committet (${res.commitSha}).`
+      );
+    } catch (err: unknown) {
+      setSyncError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsGitBusy(false);
+    }
+  };
+
+  const handleOnlineRemoteSync = async (direction: "pull" | "push" | "both") => {
+    setSyncError("");
+    setSyncNotice("");
+    setIsGitBusy(true);
+    try {
+      const res = await syncServerGitRemote({ direction });
+      if (res?.hasConflicts) {
+        setIsConflictModalOpen(true);
+      } else if (res?.message) {
+        setSyncNotice(res.message);
+      }
+    } catch (err: unknown) {
+      setSyncError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsGitBusy(false);
+    }
+  };
 
   return (
     <>
@@ -57,6 +138,114 @@ export function GitPanel() {
       </div>
 
       <div className="git-panel-content">
+        {/* Online Server Remote Status & Quick Connect Card */}
+        {isOnlineGit && (
+          <div
+            style={{
+              padding: "10px 12px",
+              marginBottom: "10px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-panel)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px" }}>
+              <span style={{ fontWeight: 700, color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}>
+                {gitStatus?.branch || "main"}
+              </span>
+              {gitStatus?.remoteUrl && (
+                <span style={{ fontSize: "10.5px", fontFamily: "var(--font-mono)", color: "var(--accent-indigo)" }}>
+                  ↑{gitStatus.ahead} • ↓{gitStatus.behind}
+                </span>
+              )}
+            </div>
+
+            {gitStatus?.remoteUrl ? (
+              <>
+                <div
+                  style={{
+                    fontSize: "10.5px",
+                    fontFamily: "var(--font-mono)",
+                    color: "var(--text-muted)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={gitStatus.remoteUrl}
+                >
+                  {gitStatus.remoteUrl}
+                </div>
+                {canConnectRepo && (
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      type="button"
+                      disabled={isGitBusy}
+                      onClick={() => void handleOnlineRemoteSync("pull")}
+                      className="git-btn"
+                      style={{ flex: 1, padding: "5px 8px", fontSize: "11px", backgroundColor: "var(--bg-sidebar)", border: "1px solid var(--border-color)" }}
+                    >
+                      <Download size={12} /> Pull
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isGitBusy}
+                      onClick={() => void handleOnlineRemoteSync("push")}
+                      className="git-btn"
+                      style={{ flex: 1, padding: "5px 8px", fontSize: "11px", backgroundColor: "var(--bg-sidebar)", border: "1px solid var(--border-color)" }}
+                    >
+                      <Upload size={12} /> Push
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openGitRepoModal("remote")}
+                      title={isEn ? "Remote & Auth Settings" : "Remote & PAT/SSH Einstellungen"}
+                      style={{
+                        padding: "5px 8px",
+                        borderRadius: "6px",
+                        border: "1px solid var(--border-color)",
+                        backgroundColor: "var(--bg-sidebar)",
+                        color: "var(--text-secondary)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Link2 size={12} />
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              canConnectRepo && (
+                <button
+                  type="button"
+                  onClick={() => openGitRepoModal("clone")}
+                  className="git-btn"
+                  style={{ width: "100%", padding: "6px 10px", fontSize: "11.5px" }}
+                >
+                  <FolderGit2 size={13} />
+                  <span>
+                    {isEn ? "Connect or Clone Git Repo" : "Git-Repo verbinden / klonen"}
+                  </span>
+                </button>
+              )
+            )}
+          </div>
+        )}
+
+        {syncError && (
+          <div style={{ padding: "8px 10px", marginBottom: "8px", borderRadius: "6px", border: "1px solid var(--accent-red)", backgroundColor: "rgba(239,68,68,0.1)", color: "#fca5a5", fontSize: "11px" }}>
+            {syncError}
+          </div>
+        )}
+
+        {syncNotice && (
+          <div style={{ padding: "8px 10px", marginBottom: "8px", borderRadius: "6px", border: "1px solid var(--accent-green)", backgroundColor: "rgba(16,185,129,0.1)", color: "var(--accent-green)", fontSize: "11px" }}>
+            {syncNotice}
+          </div>
+        )}
+
         {conflictCount > 0 && (
           <div
             style={{
@@ -170,13 +359,22 @@ export function GitPanel() {
           <div style={{ display: "flex", gap: "8px" }}>
             <button
               className="git-btn"
-              disabled={changedPaths.length === 0 || conflictCount > 0 || isStakeholderReadOnly}
-              onClick={handleCommit}
+              disabled={
+                isGitBusy ||
+                (!isOnlineGit && changedPaths.length === 0) ||
+                !commitMessage.trim() ||
+                conflictCount > 0 ||
+                isStakeholderReadOnly
+              }
+              onClick={() => {
+                if (isOnlineGit) void handleOnlineCommitAndPush();
+                else void handleCommit();
+              }}
               style={{ flex: 1 }}
             >
               <GitBranch size={14} /> {t.commitPush}
             </button>
-            {isTauri && (
+            {isTauri && !isOnlineGit && (
               <button
                 className="git-btn"
                 onClick={handleGitPull}
@@ -191,13 +389,11 @@ export function GitPanel() {
                 <Download size={14} />
               </button>
             )}
-            {serverMode && authUser && (
+            {isOnlineGit && (
               <button
                 className="git-btn"
-                onClick={async () => {
-                  const res = await syncServerGitRemote({ direction: "both" });
-                  if (res?.hasConflicts) setIsConflictModalOpen(true);
-                }}
+                disabled={isGitBusy}
+                onClick={() => void handleOnlineRemoteSync("both")}
                 style={{
                   backgroundColor: "var(--bg-panel)",
                   border: "1px solid var(--border-color)",
@@ -214,14 +410,18 @@ export function GitPanel() {
 
         <div className="git-status-section" style={{ flex: 1, overflowY: "auto" }}>
           <div className="git-status-title">{t.commitHistory}</div>
-          {commits.map((c, i) => (
+          {displayCommits.map((c, i) => (
             <div
-              key={i}
+              key={`${c.hash}-${i}`}
               style={{ borderBottom: "1px solid var(--border-color)", paddingBottom: "8px", marginBottom: "8px" }}
             >
               <div style={{ display: "flex", fontSize: "11px", marginBottom: "2px" }}>
-                <span style={{ color: "var(--accent-indigo)", fontWeight: "bold" }}>{c.hash}</span>
-                <span style={{ color: "var(--text-muted)", marginLeft: "auto" }}>{c.date}</span>
+                <span style={{ color: "var(--accent-indigo)", fontWeight: "bold", fontFamily: "var(--font-mono)" }}>
+                  {c.hash}
+                </span>
+                <span style={{ color: "var(--text-muted)", marginLeft: "auto" }}>
+                  {c.date.length > 16 ? c.date.slice(0, 16).replace("T", " ") : c.date}
+                </span>
               </div>
               <div style={{ fontSize: "12px", color: "var(--text-primary)" }}>{c.message}</div>
               <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>

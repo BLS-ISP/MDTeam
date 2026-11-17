@@ -21,6 +21,9 @@ export function PageHistoryModal({
   activeFile,
   isTauri,
   tauriRootFolder,
+  serverGitEnabled = false,
+  onFetchServerHistory,
+  onFetchServerFileAtCommit,
   currentUser = "@developer-a",
   language = "de",
   onClose,
@@ -45,7 +48,8 @@ export function PageHistoryModal({
       activeFile,
       isTauri,
       tauriRootFolder,
-      currentUser
+      currentUser,
+      serverGitEnabled ? onFetchServerHistory : undefined
     ).then((combined) => {
       if (!cancelled) {
         setVersions(combined);
@@ -81,6 +85,27 @@ export function PageHistoryModal({
     if (selectedEntry.source === "session") {
       setHistoricalContent(selectedEntry.snapshotContent ?? "");
       return;
+    }
+
+    if (serverGitEnabled && onFetchServerFileAtCommit) {
+      let cancelled = false;
+      setLoadingDiff(true);
+      onFetchServerFileAtCommit(selectedEntry.commitHash, activeFile.path)
+        .then((content) => {
+          if (!cancelled) {
+            setHistoricalContent(content);
+            setLoadingDiff(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setHistoricalContent(activeFile.content);
+            setLoadingDiff(false);
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
     }
 
     if (isTauri && tauriRootFolder) {
@@ -192,7 +217,7 @@ export function PageHistoryModal({
                   : `Versionshistorie & Zeitmaschine — ${activeFile.name}`}
               </div>
               <div style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>
-                {isTauri && tauriRootFolder
+                {serverGitEnabled || (isTauri && tauriRootFolder)
                   ? isEn
                     ? "Git commit history + local session checkpoints"
                     : "Git-Commit-Historie + lokale Sitzungs-Snapshots"

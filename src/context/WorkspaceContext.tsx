@@ -201,6 +201,28 @@ function useBuildWorkspaceContextValue() {
   };
 
   useEffect(() => {
+    if (serverBridge.serverMode && serverBridge.authUser && serverBridge.gitStatus?.branch) {
+      tauriWorkspace.setActiveBranch(serverBridge.gitStatus.branch);
+    }
+  }, [serverBridge.authUser, serverBridge.gitStatus?.branch, serverBridge.serverMode]);
+
+  useEffect(() => {
+    if (files.length > 0 && !files.some((f) => f.path === activeFilePath)) {
+      const preferred =
+        files.find((f) => /^readme\.md$/i.test(f.path)) ||
+        files.find((f) => f.path === "wiki/welcome.md") ||
+        files[0];
+      if (preferred) {
+        setActiveFilePath(preferred.path);
+        setOpenTabs((prev) => {
+          const valid = prev.filter((p) => files.some((f) => f.path === p));
+          return valid.length > 0 ? valid : [preferred.path];
+        });
+      }
+    }
+  }, [activeFilePath, files]);
+
+  useEffect(() => {
     if (!activeFilePath.endsWith(".md")) {
       setEditorMode("code");
     }

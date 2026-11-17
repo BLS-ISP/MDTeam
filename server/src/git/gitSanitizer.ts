@@ -124,11 +124,37 @@ export function sanitizeGitRef(rawRef: string): string {
   return trimmed;
 }
 
+function isBlockedLoopbackOrMetadataHost(host: string): boolean {
+  const h = host.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  if (!h) return true;
+  if (
+    h === "localhost" ||
+    h === "accountprovider" ||
+    h === "0.0.0.0" ||
+    h === "::1" ||
+    h === "0:0:0:0:0:0:0:1" ||
+    h.endsWith(".localhost")
+  ) {
+    return true;
+  }
+  if (/^127\./.test(h)) return true;
+  if (/^169\.254\./.test(h)) return true;
+  if (/^fe80:/i.test(h)) return true;
+  return false;
+}
+
 export function sanitizeRemoteUrl(rawUrl: string): string {
   const trimmed = (rawUrl || "").trim();
   if (!trimmed) return "";
   if (trimmed.startsWith("-")) {
     throw new HttpError(400, "Git remote URL cannot start with '-'", "FLAG_INJECTION_BLOCKED");
+  }
+  if (/^(ext::|fd::|file:|git:\/\/)/i.test(trimmed)) {
+    throw new HttpError(
+      400,
+      "Unsafe Git transport protocol is forbidden (only https:// or SSH is allowed)",
+      "UNSAFE_REMOTE_URL"
+    );
   }
   if (
     !/^(https?:\/\/|ssh:\/\/|git@[a-zA-Z0-9._-]+:)/i.test(trimmed) ||
@@ -140,6 +166,40 @@ export function sanitizeRemoteUrl(rawUrl: string): string {
       "UNSAFE_REMOTE_URL"
     );
   }
+
+  const allowLocalTest = process.env.MDTEAM_ALLOW_LOCAL_GIT_REMOTE === "1";
+  const allowInsecureHttp =
+    process.env.GIT_ALLOW_INSECURE_HTTP === "true" || allowLocalTest;
+
+  if (/^http:\/\//i.test(trimmed) && !allowInsecureHttp) {
+    throw new HttpError(
+      400,
+      "Plaintext http:// Git URLs are disabled by default; use https:// or SSH (or set GIT_ALLOW_INSECURE_HTTP=true)",
+      "INSECURE_HTTP_BLOCKED"
+    );
+  }
+
+  let hostToCheck = "";
+  if (/^(https?|ssh):\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      hostToCheck = parsed.hostname;
+    } catch {
+      throw new HttpError(400, "Invalid Git remote URL syntax", "UNSAFE_REMOTE_URL");
+    }
+  } else {
+    const scpMatch = trimmed.match(/^git@([a-zA-Z0-9._-]+):/i);
+    hostToCheck = scpMatch ? scpMatch[1] : "";
+  }
+
+  if (!allowLocalTest && isBlockedLoopbackOrMetadataHost(hostToCheck)) {
+    throw new HttpError(
+      400,
+      `Git remote host '${hostToCheck}' resolves to a forbidden loopback or link-local metadata address`,
+      "SSRF_HOST_BLOCKED"
+    );
+  }
+
   return trimmed;
 }
 
@@ -147,12 +207,17 @@ export function execGitSafe(
   cwd: string,
   args: string[],
   author?: Pick<AuthUser, "displayName" | "email" | "username">,
-  allowNonZero = false
+  allowNonZero = false,
+  extraEnv?: Record<string, string>
 ): Promise<GitCommandResult> {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     GIT_TERMINAL_PROMPT: "0",
+    GCM_INTERACTIVE: "never",
+    GIT_ASKPASS: "echo",
+    SSH_ASKPASS: "echo",
     LC_ALL: "C.UTF-8",
+    ...(extraEnv || {}),
   };
 
   if (author) {
@@ -177,6 +242,7 @@ export function execGitSafe(
       {
         cwd,
         env,
+        timeout: 45_000,
         maxBuffer: 20 * 1024 * 1024,
         windowsHide: true,
       },

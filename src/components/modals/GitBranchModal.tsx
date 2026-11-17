@@ -9,6 +9,13 @@ export interface GitBranchModalProps {
   onClose: () => void;
   isTauri?: boolean;
   tauriRootFolder?: string | null;
+  serverGitEnabled?: boolean;
+  projectId?: string;
+  onListServerBranches?: () => Promise<{
+    currentBranch: string;
+    branches: Array<{ name: string; isCurrent: boolean; isRemote?: boolean }>;
+  }>;
+  onCheckoutServerBranch?: (branch: string, createNew: boolean) => Promise<{ branch: string }>;
   initialNewBranchName?: string;
   currentBranch?: string;
   activeBranch?: string;
@@ -22,6 +29,10 @@ export function GitBranchModal({
   onClose,
   isTauri = false,
   tauriRootFolder = null,
+  serverGitEnabled = false,
+  projectId = "default",
+  onListServerBranches,
+  onCheckoutServerBranch,
   initialNewBranchName = "",
   currentBranch: externalBranch,
   activeBranch: externalActiveBranch,
@@ -31,6 +42,7 @@ export function GitBranchModal({
 }: GitBranchModalProps) {
   const isEn = language === "en";
   const useNativeGit = Boolean(isTauri && tauriRootFolder);
+  const useServerGit = Boolean(serverGitEnabled && onListServerBranches && onCheckoutServerBranch);
   const resolvedExternalBranch = externalBranch || externalActiveBranch;
 
   const {
@@ -48,11 +60,14 @@ export function GitBranchModal({
     isOpen,
     isEn,
     useNativeGit,
+    useServerGit,
     tauriRootFolder,
     initialNewBranchName,
     resolvedExternalBranch,
     onBranchChange,
     onBranchChanged,
+    onListServerBranches,
+    onCheckoutServerBranch,
   });
 
   if (!isOpen) return null;
@@ -104,18 +119,22 @@ export function GitBranchModal({
                 {isEn ? "GitOps Branch Manager" : "GitOps Branch-Verwaltung"}
               </div>
               <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                {useNativeGit
+                {useServerGit
+                  ? isEn
+                    ? `Connected to Online Server Git repository (${projectId})`
+                    : `Verbunden mit Online-Server-Git-Repository (${projectId})`
+                  : useNativeGit
                   ? isEn
                     ? "Connected to local Git repository via Tauri"
                     : "Verbunden mit lokalem Git-Repository (Tauri)"
                   : isEn
-                    ? "Browser Sandbox Mode (open folder in Tauri for native Git CLI)"
-                    : "Browser-Sandbox-Modus (in Tauri Ordner öffnen für natives Git)"}
+                  ? "Browser Sandbox Mode (sign in or open folder in Tauri for real Git)"
+                  : "Browser-Sandbox-Modus (anmelden oder Ordner in Tauri öffnen für echtes Git)"}
               </div>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            {useNativeGit && (
+            {(useNativeGit || useServerGit) && (
               <button
                 type="button"
                 onClick={loadBranches}

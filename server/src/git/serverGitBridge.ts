@@ -1,7 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { HttpError, inferAssetMimeType } from "../httpHelpers.js";
-import type { AuthUser } from "../types.js";
+import type { AuthUser, PublicProjectSummary } from "../types.js";
+import {
+  canUserAccessProject,
+  listStoredProjectRecords,
+  toPublicProjectSummary,
+} from "./gitCredentialsStore.js";
 import {
   execGitSafe,
   getReposBaseDir,
@@ -88,6 +93,21 @@ export async function ensureProjectRepository(rawProjectId: string): Promise<{
   return { projectId, repoDir };
 }
 
+const IGNORED_SCAN_DIRS = new Set([
+  ".git",
+  "node_modules",
+  ".next",
+  "dist",
+  "build",
+  "out",
+  "target",
+  "vendor",
+  ".venv",
+  "venv",
+  "__pycache__",
+  ".cache",
+]);
+
 export async function listAvailableProjects(): Promise<string[]> {
   const baseDir = getReposBaseDir();
   await fs.mkdir(baseDir, { recursive: true });
@@ -104,6 +124,46 @@ export async function listAvailableProjects(): Promise<string[]> {
   return ids;
 }
 
+export async function listAccessibleProjectsForUser(user: AuthUser): Promise<{
+  projects: string[];
+  projectDetails: PublicProjectSummary[];
+}> {
+  const allIds = await listAvailableProjects();
+  const storedMap = await listStoredProjectRecords();
+  const visibleIds: string[] = [];
+  const details: PublicProjectSummary[] = [];
+
+  for (const id of allIds) {
+    const rec = storedMap[id] || null;
+    if (!canUserAccessProject(rec, user)) continue;
+    visibleIds.push(id);
+    if (rec) {
+      details.push(toPublicProjectSummary(rec));
+    } else {
+      const repoDir = resolveProjectDir(id);
+      const rem = await execGitSafe(repoDir, ["remote", "get-url", "origin"], undefined, true);
+      const br = await execGitSafe(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"], undefined, true);
+      details.push({
+        projectId: id,
+        displayName: id,
+        remoteUrl: rem.exitCode === 0 ? rem.stdout.trim() : "",
+        authType: "none",
+        httpsUsername: "",
+        hasToken: false,
+        hasSshKey: false,
+        sshPublicKey: "",
+        defaultBranch: br.stdout.trim() || "main",
+        visibility: "team",
+        ownerId: "",
+        ownerHandle: "",
+        createdAt: "",
+      });
+    }
+  }
+
+  return { projects: visibleIds, projectDetails: details };
+}
+
 async function walkProjectTree(
   rootDir: string,
   currentDir: string,
@@ -112,7 +172,7 @@ async function walkProjectTree(
 ): Promise<void> {
   const entries = await fs.readdir(currentDir, { withFileTypes: true });
   for (const entry of entries) {
-    if (entry.name === ".git" || entry.name === "node_modules") continue;
+    if (entry.isSymbolicLink() || IGNORED_SCAN_DIRS.has(entry.name)) continue;
     const absPath = path.join(currentDir, entry.name);
     const relPath = path.relative(rootDir, absPath).replace(/\\/g, "/");
 
@@ -129,6 +189,8 @@ async function walkProjectTree(
 
     const lower = entry.name.toLowerCase();
     if (lower.endsWith(".md") || (relPath.startsWith(".mdteam/") && lower.endsWith(".json"))) {
+      const stat = await fs.stat(absPath).catch(() => null);
+      if (stat && stat.size > 2 * 1024 * 1024) continue;
       const content = await fs.readFile(absPath, "utf8");
       const slashIdx = relPath.lastIndexOf("/");
       const category = slashIdx !== -1 ? relPath.slice(0, slashIdx) : "other";

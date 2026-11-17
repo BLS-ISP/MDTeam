@@ -15,6 +15,14 @@ MDTeam supports two fully compatible operating modes that work on the **same Git
    * Developers open local Git clones via **Open Local Folder** in the Explorer sidebar (with a quick switcher for the 5 most recent projects).
    * Changes auto-save to disk, pull/commit/push via native Git, and optionally connect to the shared Yjs WebSocket server (`ws://<your-host>:1234`) for live multi-cursor editing and Planning Poker.
 
+### 1.3 Connecting & Cloning Real Git Repositories Online (Web / NethServer 8)
+Once logged in as a **Developer**, **Scrum Master**, **Product Owner**, or **Admin**, click **Git Repo** in the top bar or **+ Clone Git Repo** in the Explorer sidebar:
+* **Clone Existing Repository:** Enter any HTTPS (`https://github.com/org/repo.git`, `https://gitlab.company.de/team/service.git`) or SSH (`git@github.com:org/repo.git`) URL, click **Test URL** (`git ls-remote`) to verify credentials and discover remote branches, choose **Shared Team Project** or **Private Developer Workspace**, and click **Clone & Open Repository**.
+* **Encrypted Git Authentication:**
+  * **HTTPS Token / PAT:** Choose a provider preset (`GitHub`, `GitLab`, `Gitea/Forgejo`, `Bitbucket`) and enter your Personal Access Token. Tokens are encrypted at rest via **AES-256-GCM** (`DATA_DIR/git-projects.json`) and injected via ephemeral Git environment headers—never stored in `.git/config`.
+  * **Ed25519 SSH Deploy Key:** Open the **Remote** tab, click **Generate SSH Deploy Key**, copy the `ssh-ed25519` public key, and add it to your repository's *Deploy Keys* (with write access enabled).
+* **Full Online GitOps:** Switch or create branches (including 1-click **Create Branch from Issue** in the Jira drawer), commit & push with your authenticated Git author identity, pull upstream commits, and inspect historical commits via **Page Version History**.
+
 ---
 
 ## 2. Authentication, Roles & Enterprise SSO Setup

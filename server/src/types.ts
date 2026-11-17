@@ -68,6 +68,25 @@ export interface PersistedStoreData {
   oidc: OidcServerConfig;
 }
 
+export type GitAuthType = "none" | "https" | "ssh";
+export type ProjectVisibility = "team" | "private";
+
+export interface PublicProjectSummary {
+  projectId: string;
+  displayName: string;
+  remoteUrl: string;
+  authType: GitAuthType;
+  httpsUsername: string;
+  hasToken: boolean;
+  hasSshKey: boolean;
+  sshPublicKey: string;
+  defaultBranch: string;
+  visibility: ProjectVisibility;
+  ownerId: string;
+  ownerHandle: string;
+  createdAt: string;
+}
+
 export type ScrumAction =
   | "reorder_product_backlog"
   | "edit_product_goal"
@@ -77,6 +96,7 @@ export type ScrumAction =
   | "edit_issue"
   | "edit_wiki"
   | "approve_wiki"
+  | "connect_git_repo"
   | "comment_or_feedback"
   | "manage_users";
 
@@ -90,6 +110,7 @@ const ROLE_ACTIONS: Record<ScrumRole, ReadonlySet<ScrumAction>> = {
     "edit_issue",
     "edit_wiki",
     "approve_wiki",
+    "connect_git_repo",
     "comment_or_feedback",
     "manage_users",
   ]),
@@ -101,6 +122,7 @@ const ROLE_ACTIONS: Record<ScrumRole, ReadonlySet<ScrumAction>> = {
     "edit_issue",
     "edit_wiki",
     "approve_wiki",
+    "connect_git_repo",
     "comment_or_feedback",
   ]),
   "scrum-master": new Set<ScrumAction>([
@@ -109,12 +131,14 @@ const ROLE_ACTIONS: Record<ScrumRole, ReadonlySet<ScrumAction>> = {
     "edit_issue",
     "edit_wiki",
     "approve_wiki",
+    "connect_git_repo",
     "comment_or_feedback",
   ]),
   developer: new Set<ScrumAction>([
     "pull_to_sprint",
     "edit_issue",
     "edit_wiki",
+    "connect_git_repo",
     "comment_or_feedback",
   ]),
   stakeholder: new Set<ScrumAction>(["comment_or_feedback"]),
@@ -140,6 +164,7 @@ export function isValidScrumAction(value: unknown): value is ScrumAction {
     value === "edit_issue" ||
     value === "edit_wiki" ||
     value === "approve_wiki" ||
+    value === "connect_git_repo" ||
     value === "comment_or_feedback" ||
     value === "manage_users"
   );

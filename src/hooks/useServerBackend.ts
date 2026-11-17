@@ -8,13 +8,14 @@ import {
   type AuthUser,
   type OidcProviderPreset,
   type ScrumAction,
-  type ServerConflictEntry,
   type ServerGitStatusSummary,
+  type ServerProjectSummary,
   type WebhookDeliveryChannelResult,
   type WebhookDispatchInput,
 } from "../types/auth";
 import type { WorkspaceFile } from "../types/workspace";
 import { blobToRawBase64 } from "../components/auth/authModalStyles";
+import { useServerGitApi } from "./useServerGitApi";
 
 const SERVER_URL_KEY = "mdteam_server_url";
 const TOKEN_KEY = "mdteam_session_token";
@@ -62,6 +63,7 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
   const [ldapDomain, setLdapDomain] = useState("");
   const [activeProjectId, setActiveProjectId] = useState("default");
   const [availableProjects, setAvailableProjects] = useState<string[]>(["default"]);
+  const [projectDetails, setProjectDetails] = useState<ServerProjectSummary[]>([]);
   const [gitStatus, setGitStatus] = useState<ServerGitStatusSummary | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -114,13 +116,13 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
           baseOverride,
           tokenOverride
         );
-        if (Array.isArray(res.files) && res.files.length > 0) {
+        if (Array.isArray(res.files)) {
           setFiles?.(res.files);
           if (setCategories) {
             const cats = Array.from(
               new Set(res.files.map((f) => f.category).filter((c) => c && !c.startsWith(".")))
             ).sort();
-            if (cats.length > 0) setCategories(cats);
+            setCategories(cats.length > 0 ? cats : ["wiki", "issues", "docs"]);
           }
         }
         setServerError(null);
@@ -136,7 +138,12 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
     async (baseOverride?: string, tokenOverride?: string, targetProject = activeProjectId) => {
       const [uRes, pRes, sRes] = await Promise.allSettled([
         apiFetch<{ users: AuthUser[] }>("/api/users", {}, baseOverride, tokenOverride),
-        apiFetch<{ projects: string[] }>("/api/projects", {}, baseOverride, tokenOverride),
+        apiFetch<{ projects: string[]; projectDetails?: ServerProjectSummary[] }>(
+          "/api/projects",
+          {},
+          baseOverride,
+          tokenOverride
+        ),
         apiFetch<ServerGitStatusSummary>(
           `/api/projects/${encodeURIComponent(targetProject)}/git/status`,
           {},
@@ -149,6 +156,9 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
       }
       if (pRes.status === "fulfilled" && Array.isArray(pRes.value.projects)) {
         setAvailableProjects(pRes.value.projects);
+        if (Array.isArray(pRes.value.projectDetails)) {
+          setProjectDetails(pRes.value.projectDetails);
+        }
       }
       if (sRes.status === "fulfilled") setGitStatus(sRes.value);
     },
@@ -227,7 +237,12 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
       setLdapDomain(typeof health.ldapDomain === "string" ? health.ldapDomain : "");
 
       try {
-        const me = await apiFetch<{ user: AuthUser }>("/api/auth/me", {}, detectedBase, storedToken);
+        const me = await apiFetch<{ user: AuthUser }>(
+          "/api/auth/me",
+          {},
+          detectedBase,
+          storedToken
+        );
         if (me.user) {
           setAuthUser(me.user);
           onAuthChangeRef.current?.(me.user, mapScrumRoleToWorkspaceMode(me.user.role));
@@ -268,7 +283,9 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
       });
       setAuthUser(data.user);
       setSessionToken(data.token);
-      if (typeof window !== "undefined" && data.token) localStorage.setItem(TOKEN_KEY, data.token);
+      if (typeof window !== "undefined" && data.token) {
+        localStorage.setItem(TOKEN_KEY, data.token);
+      }
       onAuthChangeRef.current?.(data.user, mapScrumRoleToWorkspaceMode(data.user.role));
       await Promise.allSettled([
         loadServerWorkspaceFiles(activeProjectId, resolvedApiBase, data.token),
@@ -337,7 +354,9 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
         `/api/projects/${encodeURIComponent(activeProjectId)}/files?path=${encodeURIComponent(filePath)}`,
         {
           method: "DELETE",
-          body: commitMessage ? JSON.stringify({ path: filePath, message: commitMessage }) : undefined,
+          body: commitMessage
+            ? JSON.stringify({ path: filePath, message: commitMessage })
+            : undefined,
         }
       );
     },
@@ -347,7 +366,8 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
   const uploadServerBinaryAsset = useCallback(
     async (blobOrFile: File | Blob, subdir = "assets") => {
       const dataBase64 = await blobToRawBase64(blobOrFile);
-      const rawName = "name" in blobOrFile && blobOrFile.name ? blobOrFile.name : "image.png";
+      const rawName =
+        "name" in blobOrFile && blobOrFile.name ? blobOrFile.name : "image.png";
       const res = await apiFetch<{
         assetPath: string;
         url: string;
@@ -361,52 +381,6 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
       return { ...res, fullUrl, markdown: `![${rawName}](${fullUrl})` };
     },
     [activeProjectId, apiFetch, resolvedApiBase]
-  );
-
-  const syncServerGitRemote = useCallback(
-    async (options?: { remoteUrl?: string; branch?: string; direction?: "pull" | "push" | "both" }) => {
-      const res = await apiFetch<{
-        ok: boolean;
-        hasConflicts: boolean;
-        conflicts: string[];
-        message: string;
-      }>(`/api/projects/${encodeURIComponent(activeProjectId)}/git/sync`, {
-        method: "POST",
-        body: JSON.stringify(options || {}),
-      });
-      await refreshTeamAndProjects();
-      if (res.ok) await loadServerWorkspaceFiles(activeProjectId);
-      return res;
-    },
-    [activeProjectId, apiFetch, loadServerWorkspaceFiles, refreshTeamAndProjects]
-  );
-
-  const fetchServerConflicts = useCallback(
-    async (specificFile?: string) => {
-      const q = specificFile ? `?file=${encodeURIComponent(specificFile)}` : "";
-      return apiFetch<{
-        conflicts: string[];
-        items: ServerConflictEntry[];
-        versions: Record<string, ServerConflictEntry>;
-      }>(`/api/projects/${encodeURIComponent(activeProjectId)}/git/conflicts${q}`);
-    },
-    [activeProjectId, apiFetch]
-  );
-
-  const resolveServerConflict = useCallback(
-    async (filePath: string, resolvedContent: string, commit = true) => {
-      const res = await apiFetch<{
-        resolvedPath: string;
-        remainingConflicts: string[];
-        committed: boolean;
-      }>(`/api/projects/${encodeURIComponent(activeProjectId)}/git/resolve`, {
-        method: "POST",
-        body: JSON.stringify({ filePath, resolvedContent, commit }),
-      });
-      await loadServerWorkspaceFiles(activeProjectId);
-      return res;
-    },
-    [activeProjectId, apiFetch, loadServerWorkspaceFiles]
   );
 
   const dispatchWebhookNotification = useCallback(
@@ -426,6 +400,14 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
     [authUser, serverMode]
   );
 
+  const gitApi = useServerGitApi({
+    activeProjectId,
+    apiFetch,
+    selectServerProject,
+    loadServerWorkspaceFiles,
+    refreshTeamAndProjects,
+  });
+
   return {
     serverMode,
     resolvedApiBase,
@@ -441,6 +423,7 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
     ldapDomain,
     activeProjectId,
     availableProjects,
+    projectDetails,
     gitStatus,
     apiFetch,
     setCustomServerUrl,
@@ -453,11 +436,9 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
     syncUpsertServerFile,
     syncDeleteServerFile,
     uploadServerBinaryAsset,
-    syncServerGitRemote,
-    fetchServerConflicts,
-    resolveServerConflict,
     dispatchWebhookNotification,
     refreshTeamAndProjects,
     canPerform,
+    ...gitApi,
   };
 }

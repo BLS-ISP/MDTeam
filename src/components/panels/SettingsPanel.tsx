@@ -21,6 +21,12 @@ export function SettingsPanel() {
     setGitUrl,
     yjsUrl,
     setYjsUrl,
+    serverMode,
+    authUser,
+    activeProjectId,
+    gitStatus,
+    canPerformAction,
+    openGitRepoModal,
   } = useWorkspaceContext();
 
   return (
@@ -78,27 +84,80 @@ export function SettingsPanel() {
           </div>
         )}
 
-        <div className="settings-group">
-          <label className="settings-label">{t.gitProviderLabel}</label>
-          <select
-            className="settings-select"
-            value={gitProvider}
-            onChange={(e) => setGitProvider(e.target.value)}
+        {serverMode && authUser ? (
+          <div
+            className="settings-group"
+            style={{
+              padding: "10px 12px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-panel)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}
           >
-            <option value="gitlab-selfhosted">GitLab (Self-hosted)</option>
-            <option value="github-cloud">GitHub Enterprise (Cloud)</option>
-          </select>
-        </div>
+            <label className="settings-label">
+              {language === "en"
+                ? `Online Git Repository (${activeProjectId})`
+                : `Online-Git-Anbindung (${activeProjectId})`}
+            </label>
+            <div style={{ fontSize: "11px", fontFamily: "var(--font-mono)", color: "var(--text-secondary)", wordBreak: "break-all" }}>
+              {gitStatus?.remoteUrl ||
+                (language === "en" ? "No external remote linked yet" : "Noch kein externes Remote verknüpft")}
+            </div>
+            {canPerformAction("connect_git_repo") && (
+              <div style={{ display: "flex", gap: "6px" }}>
+                <button
+                  type="button"
+                  className="git-btn"
+                  style={{ flex: 1, fontSize: "11px", padding: "6px 8px" }}
+                  onClick={() => openGitRepoModal("clone")}
+                >
+                  {language === "en" ? "+ Clone Repo" : "+ Repo klonen"}
+                </button>
+                <button
+                  type="button"
+                  className="git-btn"
+                  style={{
+                    flex: 1,
+                    fontSize: "11px",
+                    padding: "6px 8px",
+                    backgroundColor: "var(--bg-sidebar)",
+                    border: "1px solid var(--border-color)",
+                  }}
+                  onClick={() => openGitRepoModal("remote")}
+                >
+                  {language === "en" ? "Remote & Auth" : "Remote & PAT/SSH"}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="settings-group">
+              <label className="settings-label">{t.gitProviderLabel}</label>
+              <select
+                className="settings-select"
+                value={gitProvider}
+                onChange={(e) => setGitProvider(e.target.value)}
+              >
+                <option value="gitlab-selfhosted">GitLab (Self-hosted)</option>
+                <option value="github-cloud">GitHub Enterprise (Cloud)</option>
+              </select>
+            </div>
 
-        <div className="settings-group">
-          <label className="settings-label">{t.gitUrlLabel}</label>
-          <input
-            type="text"
-            className="settings-input"
-            value={gitUrl}
-            onChange={(e) => setGitUrl(e.target.value)}
-          />
-        </div>
+            <div className="settings-group">
+              <label className="settings-label">{t.gitUrlLabel}</label>
+              <input
+                type="text"
+                className="settings-input"
+                value={gitUrl}
+                onChange={(e) => setGitUrl(e.target.value)}
+              />
+            </div>
+          </>
+        )}
 
         <div className="settings-group">
           <label className="settings-label">Yjs Server URL</label>

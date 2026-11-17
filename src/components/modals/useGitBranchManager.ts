@@ -31,22 +31,31 @@ export interface UseGitBranchManagerArgs {
   isOpen: boolean;
   isEn: boolean;
   useNativeGit: boolean;
+  useServerGit?: boolean;
   tauriRootFolder: string | null;
   initialNewBranchName: string;
   resolvedExternalBranch?: string;
   onBranchChange?: (branchName: string) => void;
   onBranchChanged?: (branchName: string) => void;
+  onListServerBranches?: () => Promise<{
+    currentBranch: string;
+    branches: Array<{ name: string; isCurrent: boolean; isRemote?: boolean }>;
+  }>;
+  onCheckoutServerBranch?: (branch: string, createNew: boolean) => Promise<{ branch: string }>;
 }
 
 export function useGitBranchManager({
   isOpen,
   isEn,
   useNativeGit,
+  useServerGit = false,
   tauriRootFolder,
   initialNewBranchName,
   resolvedExternalBranch,
   onBranchChange,
   onBranchChanged,
+  onListServerBranches,
+  onCheckoutServerBranch,
 }: UseGitBranchManagerArgs) {
   const notifyBranchChange = useCallback(
     (name: string) => {
@@ -65,6 +74,25 @@ export function useGitBranchManager({
 
   const loadBranches = useCallback(async () => {
     setErrorMsg("");
+    if (useServerGit && onListServerBranches) {
+      setIsLoading(true);
+      try {
+        const res = await onListServerBranches();
+        const curr = res.currentBranch || "main";
+        const parsed: GitBranchEntry[] = res.branches.map((b) => ({
+          name: b.name,
+          isCurrent: b.isCurrent || b.name === curr,
+        }));
+        setActiveBranch(curr);
+        setBranches(parsed);
+        notifyBranchChange(curr);
+      } catch (err: unknown) {
+        setErrorMsg(err instanceof Error ? err.message : String(err));
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
     if (useNativeGit && tauriRootFolder) {
       setIsLoading(true);
       try {
@@ -131,7 +159,7 @@ export function useGitBranchManager({
         }))
       );
     }
-  }, [useNativeGit, tauriRootFolder, resolvedExternalBranch, notifyBranchChange]);
+  }, [useServerGit, onListServerBranches, useNativeGit, tauriRootFolder, resolvedExternalBranch, notifyBranchChange]);
 
   useEffect(() => {
     if (isOpen) {
@@ -153,6 +181,26 @@ export function useGitBranchManager({
           ? "Please enter a valid Git branch name (cannot start with '-')."
           : "Bitte einen gültigen Git-Branch-Namen eingeben (darf nicht mit '-' beginnen)."
       );
+      return;
+    }
+
+    if (useServerGit && onCheckoutServerBranch) {
+      setIsLoading(true);
+      try {
+        const res = await onCheckoutServerBranch(safeName, createNew);
+        setNewBranchName("");
+        setStatusMsg(
+          isEn
+            ? `Switched server repository to branch '${res.branch}'`
+            : `Server-Repository auf Branch '${res.branch}' gewechselt`
+        );
+        await loadBranches();
+        notifyBranchChange(res.branch);
+      } catch (err: unknown) {
+        setErrorMsg(err instanceof Error ? err.message : String(err));
+      } finally {
+        setIsLoading(false);
+      }
       return;
     }
 
