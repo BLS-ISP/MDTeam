@@ -13,10 +13,10 @@ from mdteam_helpers import read_secrets_env, write_secrets_env  # noqa: E402
 
 IMAGES = [
     os.environ.get(
-        "WORKSPACE_WEB_IMAGE", "ghcr.io/bls-isp/mdteam/workspace-web:latest"
+        "WORKSPACE_WEB_IMAGE", "ghcr.io/bls-isp/mdteam/workspace-web:1.1.0"
     ),
-    os.environ.get("API_SERVER_IMAGE", "ghcr.io/bls-isp/mdteam/api-server:latest"),
-    os.environ.get("YJS_SERVER_IMAGE", "ghcr.io/bls-isp/mdteam/yjs-server:latest"),
+    os.environ.get("API_SERVER_IMAGE", "ghcr.io/bls-isp/mdteam/api-server:1.1.0"),
+    os.environ.get("YJS_SERVER_IMAGE", "ghcr.io/bls-isp/mdteam/yjs-server:1.1.0"),
 ]
 
 for image in IMAGES:

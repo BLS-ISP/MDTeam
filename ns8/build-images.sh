@@ -10,10 +10,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 REPobase="${REPobase:-ghcr.io/bls-isp}"
-reponame="mdteam-ns8"
-IMAGETAG="${IMAGETAG:-latest}"
+reponame="mdteam"
+IMAGETAG="${IMAGETAG:-1.1.0}"
 
 APP_TAG="${APP_TAG:-${IMAGETAG}}"
+if [[ "${IMAGETAG}" == "latest" || "${APP_TAG}" == "latest" ]]; then
+    echo "Error: Floating 'latest' image tags are forbidden in NethServer 8. Specify an explicit SemVer tag (e.g. 1.1.0)." >&2
+    exit 1
+fi
 WORKSPACE_WEB_IMAGE="ghcr.io/bls-isp/mdteam/workspace-web:${APP_TAG}"
 API_SERVER_IMAGE="ghcr.io/bls-isp/mdteam/api-server:${APP_TAG}"
 YJS_SERVER_IMAGE="ghcr.io/bls-isp/mdteam/yjs-server:${APP_TAG}"
@@ -52,9 +56,12 @@ buildah copy --from="${ui_container}" "${module_container}" /usr/src/ui/dist /ui
 
 buildah config \
     --entrypoint='["/"]' \
+    --label="org.opencontainers.image.source=https://github.com/BLS-ISP/MDTeam" \
     --label="org.nethserver.authorizations=traefik@node:routeadm cluster:accountconsumer" \
     --label="org.nethserver.tcp-ports-demand=1" \
     --label="org.nethserver.rootfull=0" \
+    --label="org.nethserver.max-per-node=5" \
+    --label="org.nethserver.min-core=3.0.0" \
     --label="org.nethserver.flags=" \
     --label="org.nethserver.images=${WORKSPACE_WEB_IMAGE} ${API_SERVER_IMAGE} ${YJS_SERVER_IMAGE}" \
     "${module_container}"

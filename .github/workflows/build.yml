@@ -117,11 +117,12 @@ jobs:
               const nextSec = content.search(/^## \[/m);
               body = (nextSec !== -1 ? content.slice(0, nextSec) : content).trim();
             }
-            body += `\n\n---\n### 🐳 Prebuilt Docker & NethServer 8 Images (GHCR)\n` +
-              `- \`ghcr.io/bls-isp/mdteam/workspace-web:${ver}\` (\`:latest\`)\n` +
-              `- \`ghcr.io/bls-isp/mdteam/api-server:${ver}\` (\`:latest\`)\n` +
-              `- \`ghcr.io/bls-isp/mdteam/yjs-server:${ver}\` (\`:latest\`)\n` +
-              `- \`ghcr.io/bls-isp/mdteam-ns8:${ver}\` (\`:latest\`) — NethServer 8 Rootless Module\n`;
+            body += `\n\n---\n### 🐳 Prebuilt Docker & NethServer 8 Images (GHCR — Strict SemVer)\n` +
+              `- \`ghcr.io/bls-isp/mdteam:${ver}\` — NethServer 8 Rootless Module\n` +
+              `- \`ghcr.io/bls-isp/mdteam/workspace-web:${ver}\`\n` +
+              `- \`ghcr.io/bls-isp/mdteam/api-server:${ver}\`\n` +
+              `- \`ghcr.io/bls-isp/mdteam/yjs-server:${ver}\`\n` +
+              `- **NS8 Software Center Repository URL:** \`https://raw.githubusercontent.com/BLS-ISP/MDTeam/master/ns8-repo/\`\n`;
             fs.writeFileSync("release_notes.md", body, "utf8");
           '
 

@@ -2,3 +2,5 @@
 ns8/** text eol=lf
 ns8/**/*.png binary
 ns8/**/*.ico binary
+ns8-repo/** text eol=lf
+ns8-repo/**/*.png binary

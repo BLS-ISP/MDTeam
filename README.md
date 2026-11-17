@@ -93,27 +93,35 @@ flowchart LR
 
 ---
 
-## 🛡️ NethServer 8 One-Command Installation (`mdteam-ns8`)
+## 🛡️ NethServer 8 Software Center & CLI Installation (`mdteam`)
 
-Install **MDTeam Workspace** onto any **NethServer 8 (NS8)** cluster node as an isolated, rootless Podman pod with automatic **Traefik Let's Encrypt HTTPS & WSS (`/ws`) routing**, **OpenLDAP / Samba Active Directory single sign-on**, **Directory Group → Scrum Role RBAC mapping**, and **Restic Backup / Restore / Clone** integration:
+Install **MDTeam Workspace** onto any **NethServer 8 (NS8)** cluster node as an isolated, rootless Podman pod with automatic **Traefik Let's Encrypt HTTPS & WSS (`/ws`) routing**, **OpenLDAP / Samba Active Directory single sign-on**, **Directory Group → Scrum Role RBAC mapping**, and **Restic Backup / Restore / Clone** integration.
 
+### Option A: Install via NS8 Cluster-Admin UI (Software Center Repository)
+1. Open **NS8 Cluster-Admin** → **Settings** → **Software repositories** → **Add repository**.
+2. Add the MDTeam repository:
+   * **Name:** `bls-isp`
+   * **URL:** `https://raw.githubusercontent.com/BLS-ISP/MDTeam/master/ns8-repo/`
+3. Open **Software center**, find **MDTeam Workspace**, and click **Install**.
+
+### Option B: One-Command SSH Installation (Strict SemVer)
 ```bash
-add-module ghcr.io/bls-isp/mdteam-ns8:latest 1
+add-module ghcr.io/bls-isp/mdteam:1.1.0 1
 ```
 
 1. In **NS8 Cluster-Admin** (`https://<ns8-host>/cluster-admin`), open **Applications** → **MDTeam Workspace (`mdteam1`)** → **Settings**.
 2. Enter your FQDN (e.g. `mdteam.example.org`), configure **Let's Encrypt** & **HTTP → HTTPS**, bind your **NS8 User Domain** (OpenLDAP or Active Directory), and map directory groups (`Admin`, `Product Owner`, `Scrum Master`, plus default Scrum role).
-3. See the bilingual EN/DE [**NethServer 8 Installation & Administration Guide (`docs/NETHSERVER8_INSTALLATION.md`)**](docs/NETHSERVER8_INSTALLATION.md) for group mapping details, Restic backups, cloning, and CLI updates (`api-cli run update-module`).
+3. See the bilingual EN/DE [**NethServer 8 Installation & Administration Guide (`docs/NETHSERVER8_INSTALLATION.md`)**](docs/NETHSERVER8_INSTALLATION.md) for group mapping details, Restic backups, cloning, and updates.
 
 ---
 
-## 🐳 Production Docker Deployment (Prebuilt GHCR Images)
+## 🐳 Production Docker Deployment (Prebuilt GHCR Images — Strict SemVer)
 
-Every push to `master` publishes four OCI images to GitHub Container Registry:
-* `ghcr.io/bls-isp/mdteam-ns8:latest` — Rootless NethServer 8 module (`imageroot` + Cluster-Admin Cockpit UI)
-* `ghcr.io/bls-isp/mdteam/workspace-web:latest` — Next.js UI + Nginx reverse proxy (`/` UI, `/api/*` → API, `/ws` → Yjs)
-* `ghcr.io/bls-isp/mdteam/api-server:latest` — Zero-dependency Node 20 Auth, RBAC, Git-Bridge & Webhook server
-* `ghcr.io/bls-isp/mdteam/yjs-server:latest` — Real-time CRDT collaboration & Planning Poker server
+Every release publishes four SemVer-tagged OCI images to GitHub Container Registry (never `:latest`):
+* `ghcr.io/bls-isp/mdteam:1.1.0` — Rootless NethServer 8 module (`imageroot` + Cluster-Admin Cockpit UI)
+* `ghcr.io/bls-isp/mdteam/workspace-web:1.1.0` — Next.js UI + Nginx reverse proxy (`/` UI, `/api/*` → API, `/ws` → Yjs)
+* `ghcr.io/bls-isp/mdteam/api-server:1.1.0` — Zero-dependency Node 20 Auth, RBAC, Git-Bridge & Webhook server
+* `ghcr.io/bls-isp/mdteam/yjs-server:1.1.0` — Real-time CRDT collaboration & Planning Poker server
 
 ### Quick Start with Prebuilt Images
 Create a `docker-compose.prod.yml` (or run `docker compose up -d --build` from a cloned repo):
@@ -121,7 +129,7 @@ Create a `docker-compose.prod.yml` (or run `docker compose up -d --build` from a
 ```yaml
 services:
   workspace-web:
-    image: ghcr.io/bls-isp/mdteam/workspace-web:latest
+    image: ghcr.io/bls-isp/mdteam/workspace-web:1.1.0
     ports:
       - "80:80"
     restart: always
@@ -130,7 +138,7 @@ services:
       - yjs-server
 
   api-server:
-    image: ghcr.io/bls-isp/mdteam/api-server:latest
+    image: ghcr.io/bls-isp/mdteam/api-server:1.1.0
     restart: always
     environment:
       - NODE_ENV=production
@@ -143,7 +151,7 @@ services:
       - mdteam-data:/data
 
   yjs-server:
-    image: ghcr.io/bls-isp/mdteam/yjs-server:latest
+    image: ghcr.io/bls-isp/mdteam/yjs-server:1.1.0
     ports:
       - "1234:1234"
     restart: always
@@ -207,6 +215,7 @@ Every source and test file across `src/`, `server/src/`, `src-tauri/src/`, and `
 MDTeam/
 ├── docs/                       # User/Admin Guide & NethServer 8 EN/DE Manual
 ├── ns8/                        # NethServer 8 rootless module (imageroot + Cockpit Vue UI)
+├── ns8-repo/                   # NethServer 8 Software Center repository (repodata.json + logo)
 ├── issues/ & sprints/          # Git-native atomic tickets (MDT-*.md) & sprints
 ├── arc42/, adrs/, wiki/        # Architecture chapters, ADRs & nested Confluence wiki
 ├── management/ & meetings/     # Product Goal, Capacity/Velocity, DoD/DoR & Retros

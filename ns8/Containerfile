@@ -19,13 +19,17 @@ RUN find /imageroot -name "__pycache__" -type d -exec rm -rf {} + && \
 
 # Stage 3: Assemble rootless NethServer 8 OCI module archive
 FROM scratch
+ARG APP_VERSION=1.1.0
 COPY --from=imageroot-builder /imageroot /imageroot
 COPY --from=ui-builder /usr/src/ui/dist /ui
 
-LABEL org.nethserver.authorizations="traefik@node:routeadm cluster:accountconsumer" \
+LABEL org.opencontainers.image.source="https://github.com/BLS-ISP/MDTeam" \
+      org.nethserver.authorizations="traefik@node:routeadm cluster:accountconsumer" \
       org.nethserver.tcp-ports-demand="1" \
       org.nethserver.rootfull="0" \
+      org.nethserver.max-per-node="5" \
+      org.nethserver.min-core="3.0.0" \
       org.nethserver.flags="" \
-      org.nethserver.images="ghcr.io/bls-isp/mdteam/workspace-web:latest ghcr.io/bls-isp/mdteam/api-server:latest ghcr.io/bls-isp/mdteam/yjs-server:latest"
+      org.nethserver.images="ghcr.io/bls-isp/mdteam/workspace-web:${APP_VERSION} ghcr.io/bls-isp/mdteam/api-server:${APP_VERSION} ghcr.io/bls-isp/mdteam/yjs-server:${APP_VERSION}"
 
 ENTRYPOINT ["/"]

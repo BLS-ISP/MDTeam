@@ -116,7 +116,13 @@ test("NS8 Rule 7 & 8: Backup/restore/clone scripts, Containerfile, GHCR workflow
     assert.ok(fs.existsSync(path.join(IMAGEROOT_DIR, rel)), `Missing ns8/imageroot/${rel}`);
   }
 
-  const allNs8Files = walkFiles(NS8_DIR);
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8")) as {
+    version: string;
+  };
+  assert.match(pkg.version, /^\d+\.\d+\.\d+/);
+
+  const ns8RepoDir = path.join(REPO_ROOT, "ns8-repo");
+  const allNs8Files = [...walkFiles(NS8_DIR), ...walkFiles(ns8RepoDir)];
   const imagerootFiles = walkFiles(IMAGEROOT_DIR);
   assert.ok(imagerootFiles.length >= 20);
 
@@ -128,6 +134,12 @@ test("NS8 Rule 7 & 8: Backup/restore/clone scripts, Containerfile, GHCR workflow
       false,
       `CRLF (\\r) byte detected in ${path.relative(REPO_ROOT, file)} — strict LF required`
     );
+    const text = raw.toString("utf8");
+    assert.doesNotMatch(
+      text,
+      /:latest\b/,
+      `Forbidden ':latest' tag detected in ${path.relative(REPO_ROOT, file)}`
+    );
   }
 
   const containerfile = fs.readFileSync(path.join(NS8_DIR, "Containerfile"), "utf8");
@@ -136,6 +148,7 @@ test("NS8 Rule 7 & 8: Backup/restore/clone scripts, Containerfile, GHCR workflow
   assert.match(containerfile, /sed -i 's\/\\r\$\/\/'/);
   assert.match(containerfile, /chmod \+x/);
   assert.match(containerfile, /FROM scratch/);
+  assert.match(containerfile, new RegExp(`ARG APP_VERSION=${pkg.version.replace(/\./g, "\\.")}`));
   assert.match(containerfile, /ENTRYPOINT \["\/"\]/);
   assert.match(
     containerfile,
@@ -143,16 +156,33 @@ test("NS8 Rule 7 & 8: Backup/restore/clone scripts, Containerfile, GHCR workflow
   );
   assert.match(containerfile, /org\.nethserver\.tcp-ports-demand="1"/);
   assert.match(containerfile, /org\.nethserver\.rootfull="0"/);
-  assert.match(containerfile, /ghcr\.io\/bls-isp\/mdteam\/workspace-web:latest/);
-  assert.match(containerfile, /ghcr\.io\/bls-isp\/mdteam\/api-server:latest/);
-  assert.match(containerfile, /ghcr\.io\/bls-isp\/mdteam\/yjs-server:latest/);
+  assert.match(containerfile, /ghcr\.io\/bls-isp\/mdteam\/workspace-web:\$\{APP_VERSION\}/);
+  assert.match(containerfile, /ghcr\.io\/bls-isp\/mdteam\/api-server:\$\{APP_VERSION\}/);
+  assert.match(containerfile, /ghcr\.io\/bls-isp\/mdteam\/yjs-server:\$\{APP_VERSION\}/);
 
   const dockerWorkflow = fs.readFileSync(
     path.join(REPO_ROOT, ".github", "workflows", "docker.yml"),
     "utf8"
   );
-  assert.match(dockerWorkflow, /ghcr\.io\/bls-isp\/mdteam-ns8/);
+  assert.match(dockerWorkflow, /images:\s*ghcr\.io\/bls-isp\/mdteam\b/);
   assert.match(dockerWorkflow, /\.\/ns8\/Containerfile/);
+  assert.doesNotMatch(dockerWorkflow, /value=latest/);
+
+  const repodata = JSON.parse(
+    fs.readFileSync(path.join(ns8RepoDir, "repodata.json"), "utf8")
+  ) as Array<Record<string, unknown>>;
+  assert.equal(repodata.length, 1);
+  assert.equal(repodata[0].id, "mdteam");
+  assert.equal(repodata[0].source, "ghcr.io/bls-isp/mdteam");
+  assert.equal(repodata[0].logo, "logo.png");
+  const logoBytes = fs.readFileSync(path.join(ns8RepoDir, "mdteam", "logo.png"));
+  assert.deepEqual([...logoBytes.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47]);
+  const versions = repodata[0].versions as Array<{ tag: string; labels: Record<string, string> }>;
+  assert.equal(versions[0].tag, pkg.version);
+  assert.match(
+    versions[0].labels["org.nethserver.images"],
+    new RegExp(`ghcr\\.io/bls-isp/mdteam/workspace-web:${pkg.version.replace(/\./g, "\\.")}`)
+  );
 });
 
 test("NS8 JSON schemas and Cockpit UI i18n EN/DE key parity + notification safety", () => {

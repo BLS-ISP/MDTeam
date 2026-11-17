@@ -23,6 +23,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Read strict SemVer version from package.json
+        id: pkg
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          if [ -z "$VER" ] || [ "$VER" = "latest" ]; then
+            echo "Invalid SemVer version: $VER (:latest is forbidden)" >&2
+            exit 1
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
@@ -31,15 +41,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # --- Build & Push Workspace Web Client ---
-      - name: Extract metadata (tags, labels) for Web Client
+      - name: Extract metadata (SemVer tags, labels) for Web Client
         id: meta-web
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/workspace-web
           tags: |
-            type=raw,value=latest
+            type=raw,value=${{ steps.pkg.outputs.version }}
             type=semver,pattern={{version}}
-            type=sha,format=short
 
       - name: Build and push Web Client Docker image
         uses: docker/build-push-action@v5
@@ -51,15 +60,14 @@ jobs:
           labels: ${{ steps.meta-web.outputs.labels }}
 
       # --- Build & Push Multi-User API & Git-Bridge Server ---
-      - name: Extract metadata (tags, labels) for API Server
+      - name: Extract metadata (SemVer tags, labels) for API Server
         id: meta-api
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/api-server
           tags: |
-            type=raw,value=latest
+            type=raw,value=${{ steps.pkg.outputs.version }}
             type=semver,pattern={{version}}
-            type=sha,format=short
 
       - name: Build and push API Server Docker image
         uses: docker/build-push-action@v5
@@ -71,15 +79,14 @@ jobs:
           labels: ${{ steps.meta-api.outputs.labels }}
 
       # --- Build & Push Yjs Collaboration Server ---
-      - name: Extract metadata (tags, labels) for Yjs Server
+      - name: Extract metadata (SemVer tags, labels) for Yjs Server
         id: meta-yjs
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/yjs-server
           tags: |
-            type=raw,value=latest
+            type=raw,value=${{ steps.pkg.outputs.version }}
             type=semver,pattern={{version}}
-            type=sha,format=short
 
       - name: Build and push Yjs Server Docker image
         uses: docker/build-push-action@v5
@@ -90,22 +97,23 @@ jobs:
           tags: ${{ steps.meta-yjs.outputs.tags }}
           labels: ${{ steps.meta-yjs.outputs.labels }}
 
-      # --- Build & Push NethServer 8 Rootless Module (ghcr.io/bls-isp/mdteam-ns8) ---
-      - name: Extract metadata (tags, labels) for NethServer 8 Module
+      # --- Build & Push NethServer 8 Rootless Module (ghcr.io/bls-isp/mdteam) ---
+      - name: Extract metadata (SemVer tags, labels) for NethServer 8 Module
         id: meta-ns8
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/bls-isp/mdteam-ns8
+          images: ghcr.io/bls-isp/mdteam
           tags: |
-            type=raw,value=latest
+            type=raw,value=${{ steps.pkg.outputs.version }}
             type=semver,pattern={{version}}
-            type=sha,format=short
 
       - name: Build and push NethServer 8 Module image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./ns8/Containerfile
+          build-args: |
+            APP_VERSION=${{ steps.pkg.outputs.version }}
           push: true
           tags: ${{ steps.meta-ns8.outputs.tags }}
           labels: ${{ steps.meta-ns8.outputs.labels }}

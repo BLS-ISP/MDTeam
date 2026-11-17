@@ -16,5 +16,5 @@
     "bug_url": "https://github.com/BLS-ISP/MDTeam/issues",
     "code_url": "https://github.com/BLS-ISP/MDTeam"
   },
-  "source": "ghcr.io/bls-isp/mdteam-ns8"
+  "source": "ghcr.io/bls-isp/mdteam"
 }
