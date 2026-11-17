@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import DiffViewer from "../DiffViewer";
 import IssueDrawer from "../IssueDrawer";
 import {
@@ -88,6 +88,7 @@ export function WorkspaceModalsHost() {
     ldapEnabled,
     ldapDomain,
     activeProjectId,
+    projectDetails,
     sessionToken,
     loginLocal,
     logout,
@@ -107,6 +108,24 @@ export function WorkspaceModalsHost() {
     refreshConflicts,
     isStakeholderReadOnly,
   } = useWorkspaceContext();
+
+  const [diffOriginalContent, setDiffOriginalContent] = useState<string>("");
+
+  useEffect(() => {
+    if (!diffTargetFile || !serverMode || !authUser) {
+      setDiffOriginalContent("");
+      return;
+    }
+    let cancelled = false;
+    setDiffOriginalContent("");
+    fetchServerFileAtCommit("HEAD", diffTargetFile)
+      .then((headContent) => { if (!cancelled) setDiffOriginalContent(headContent ?? ""); })
+      .catch(() => { if (!cancelled) setDiffOriginalContent(""); });
+    return () => { cancelled = true; };
+  }, [authUser, diffTargetFile, fetchServerFileAtCommit, serverMode]);
+
+  const currentServerProject = projectDetails.find((p) => p.projectId === activeProjectId);
+  const isSharedTeamProject = Boolean(serverMode && authUser && currentServerProject?.visibility !== "private");
 
   return (
     <>
@@ -234,6 +253,7 @@ export function WorkspaceModalsHost() {
         isTauri={isTauri}
         tauriRootFolder={tauriRootFolder || null}
         serverGitEnabled={Boolean(serverMode && authUser)}
+        isSharedTeamProject={isSharedTeamProject}
         projectId={activeProjectId}
         onListServerBranches={() => listServerBranches(activeProjectId)}
         onCheckoutServerBranch={(branch, createNew) =>
@@ -382,7 +402,11 @@ export function WorkspaceModalsHost() {
       {/* Visual DiffViewer overlay dialog */}
       {diffTargetFile && (
         <DiffViewer
-          originalContent={INITIAL_FILES.find((f) => f.path === diffTargetFile)?.content || ""}
+          originalContent={
+            serverMode && authUser
+              ? diffOriginalContent
+              : INITIAL_FILES.find((f) => f.path === diffTargetFile)?.content || ""
+          }
           modifiedContent={files.find((f) => f.path === diffTargetFile)?.content || ""}
           fileName={diffTargetFile.split("/").pop() || diffTargetFile}
           onClose={() => setDiffTargetFile(null)}

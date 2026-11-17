@@ -312,7 +312,7 @@ export function useWorkspaceServerBridge({
             category: existing?.category || "other",
             content,
           };
-          void serverBackend.syncUpsertServerFile(payload, "edit_wiki").catch(() => undefined);
+          void serverBackend.syncUpsertServerFile(payload, "edit_wiki", undefined, false).catch(() => undefined);
         }, 900);
       }
     },
@@ -355,7 +355,9 @@ export function useWorkspaceServerBridge({
   }, [files, serverBackend.gitStatus?.conflicts, tauriConflicts]);
 
   const storedSessionToken =
-    typeof window !== "undefined" ? localStorage.getItem("mdteam_session_token") || "" : "";
+    serverBackend.resolvedApiBase !== "" && typeof window !== "undefined"
+      ? serverBackend.sessionToken || localStorage.getItem("mdteam_session_token") || ""
+      : "";
 
   const openGitRepoModal = useCallback((tab: "clone" | "remote" | "blank" = "clone") => {
     setGitRepoModalInitialTab(tab);

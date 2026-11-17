@@ -45,6 +45,7 @@ export function useServerGitApi({
       authType?: GitAuthType;
       httpsUsername?: string;
       httpsToken?: string;
+      sshPrivateKey?: string;
     }) => {
       return apiFetch<{
         ok: boolean;
@@ -69,6 +70,7 @@ export function useServerGitApi({
       httpsUsername?: string;
       httpsToken?: string;
       sshPrivateKey?: string;
+      sshPublicKey?: string;
       scaffoldMdTeam?: boolean;
       visibility?: ProjectVisibility;
     }) => {
@@ -134,6 +136,16 @@ export function useServerGitApi({
     },
     [activeProjectId, apiFetch, loadServerWorkspaceFiles, refreshTeamAndProjects]
   );
+
+  const previewPreCloneSshKey = useCallback(async () => {
+    return apiFetch<{
+      sshPublicKey: string;
+      sshPrivateKey: string;
+    }>("/api/projects/git/ssh-key-preview", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  }, [apiFetch]);
 
   const generateServerSshKey = useCallback(
     async (targetProjectId = activeProjectId) => {
@@ -289,6 +301,7 @@ export function useServerGitApi({
     cloneServerGitRepo,
     createBlankServerProject,
     updateServerGitRemote,
+    previewPreCloneSshKey,
     generateServerSshKey,
     deleteServerProject,
     syncServerGitRemote,

@@ -4,13 +4,18 @@ import React, { useState, useEffect, useRef } from "react";
 import mermaid from "mermaid";
 import { ArrowRight, Calendar } from "lucide-react";
 import type { WorkspaceLanguage } from "../../constants/translations";
+import {
+  escapeHtmlEntities,
+  sanitizeDrawioEmbedUrl,
+  sanitizeMarkdownUrl,
+} from "./markdownSecurity";
 
-// Initialize mermaid on client side
+// Initialize mermaid on client side with strict security level to prevent SVG/HTML XSS
 if (typeof window !== "undefined") {
   mermaid.initialize({
     startOnLoad: false,
     theme: "dark",
-    securityLevel: "loose",
+    securityLevel: "strict",
     fontFamily: "var(--font-sans)",
   });
 }
@@ -76,7 +81,8 @@ export const MermaidElement = ({ chart }: { chart: string }) => {
 };
 
 export function formatInlineMarkdownText(text: string): string {
-  let formatted = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+  let formatted = escapeHtmlEntities(text);
+  formatted = formatted.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
   formatted = formatted.replace(/__(.*?)__/g, "<strong>$1</strong>");
   formatted = formatted.replace(/\*(.*?)\*/g, "<em>$1</em>");
   formatted = formatted.replace(/_(.*?)_/g, "<em>$1</em>");
@@ -118,12 +124,18 @@ export function parseInlineMarkdown(text: string, options: InlineMarkdownOptions
     const linkUrl = match[3];
 
     if (isImage) {
-      if (linkUrl.includes("diagrams.net") || linkUrl.includes("draw.io")) {
+      const safeDrawioUrl =
+        linkUrl.includes("diagrams.net") || linkUrl.includes("draw.io")
+          ? sanitizeDrawioEmbedUrl(linkUrl)
+          : null;
+      if (safeDrawioUrl) {
         segments.push(
           <iframe
             key={`drawio-${keyIdx++}`}
-            src={linkUrl}
+            src={safeDrawioUrl}
             title={linkText || "Draw.io Diagram"}
+            sandbox="allow-scripts allow-same-origin"
+            referrerPolicy="no-referrer"
             style={{
               width: "100%",
               height: "400px",
@@ -134,17 +146,29 @@ export function parseInlineMarkdown(text: string, options: InlineMarkdownOptions
             }}
           />
         );
-      } else {
+      } else if (!linkUrl.includes("diagrams.net") && !linkUrl.includes("draw.io")) {
+        const safeImgSrc = sanitizeMarkdownUrl(linkUrl, true);
         segments.push(
           <img
             key={`img-${keyIdx++}`}
-            src={linkUrl}
+            src={safeImgSrc}
             alt={linkText}
+            referrerPolicy="no-referrer"
             style={{ maxWidth: "100%", height: "auto", borderRadius: "6px", margin: "8px 0", display: "block" }}
           />
         );
+      } else {
+        segments.push(
+          <span key={`blocked-drawio-${keyIdx++}`} style={{ fontSize: "12px", color: "var(--accent-red)" }}>
+            [Blocked untrusted Draw.io embed URL]
+          </span>
+        );
       }
-    } else if (linkUrl.startsWith("file:///") || linkUrl.includes(".md") || linkUrl.startsWith("#L")) {
+    } else if (
+      linkUrl.startsWith("file:///") ||
+      (linkUrl.includes(".md") && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/i.test(linkUrl.trim())) ||
+      linkUrl.startsWith("#L")
+    ) {
       const cleanPath = linkUrl.replace("file:///", "");
       let filePath = "";
       let hash = "";
@@ -175,12 +199,14 @@ export function parseInlineMarkdown(text: string, options: InlineMarkdownOptions
         </a>
       );
     } else {
+      const safeHref = sanitizeMarkdownUrl(linkUrl, false);
       segments.push(
         <a
           key={`link-${keyIdx++}`}
-          href={linkUrl}
-          target="_blank"
+          href={safeHref}
+          target={safeHref.startsWith("#") ? undefined : "_blank"}
           rel="noopener noreferrer"
+          onClick={safeHref === "#blocked-unsafe-url" ? (e) => e.preventDefault() : undefined}
           style={{ color: "var(--accent-blue)", textDecoration: "underline" }}
         >
           {linkText}

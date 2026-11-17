@@ -1,29 +1,17 @@
 "use client";
 
 import React from "react";
-import {
-  CheckCircle2,
-  FolderGit2,
-  GitBranch,
-  Link2,
-  Plus,
-  RefreshCw,
-  Trash2,
-  X,
-} from "lucide-react";
+import { CheckCircle2, FolderGit2, GitBranch, Link2, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { GitAuthConfigFields } from "./GitAuthConfigFields";
 import { useGitRepoModalController } from "./useGitRepoModalController";
 
 const TEXT_INPUT: React.CSSProperties = {
-  width: "100%",
-  padding: "8px 10px",
-  borderRadius: "6px",
-  border: "1px solid var(--border-color)",
-  backgroundColor: "var(--bg-editor)",
-  color: "var(--text-primary)",
-  fontSize: "12.5px",
-  fontFamily: "var(--font-mono)",
-  outline: "none",
+  width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid var(--border-color)",
+  backgroundColor: "var(--bg-editor)", color: "var(--text-primary)", fontSize: "12.5px", fontFamily: "var(--font-mono)", outline: "none",
+};
+
+const FIELD_LABEL: React.CSSProperties = {
+  display: "block", fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)", marginBottom: "5px",
 };
 
 export function GitRepositoryConnectModal() {
@@ -34,29 +22,15 @@ export function GitRepositoryConnectModal() {
     <div
       onClick={() => c.setIsGitRepoModalOpen(false)}
       style={{
-        position: "fixed",
-        inset: 0,
-        backgroundColor: "rgba(0, 0, 0, 0.76)",
-        backdropFilter: "blur(4px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1120,
-        padding: "16px",
+        position: "fixed", inset: 0, backgroundColor: "rgba(0, 0, 0, 0.76)", backdropFilter: "blur(4px)",
+        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1120, padding: "16px",
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(640px, 95vw)",
-          maxHeight: "88vh",
-          backgroundColor: "var(--bg-sidebar)",
-          border: "1px solid var(--border-color)",
-          borderRadius: "12px",
-          boxShadow: "var(--shadow-lg)",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
+          width: "min(640px, 95vw)", maxHeight: "88vh", backgroundColor: "var(--bg-sidebar)", border: "1px solid var(--border-color)",
+          borderRadius: "12px", boxShadow: "var(--shadow-lg)", display: "flex", flexDirection: "column", overflow: "hidden",
         }}
       >
         <div
@@ -103,7 +77,7 @@ export function GitRepositoryConnectModal() {
           {(
             [
               { id: "clone", icon: <FolderGit2 size={13} />, label: c.isEn ? "Clone Existing Repo" : "Bestehendes Repo klonen" },
-              { id: "remote", icon: <Link2 size={13} />, label: c.isEn ? `Remote (${c.activeProjectId})` : `Remote (${c.activeProjectId})` },
+              { id: "remote", icon: <Link2 size={13} />, label: `Remote (${c.activeProjectId})` },
               { id: "blank", icon: <Plus size={13} />, label: c.isEn ? "New Blank Project" : "Neues leeres Projekt" },
             ] as const
           ).map((tItem) => {
@@ -174,9 +148,7 @@ export function GitRepositoryConnectModal() {
           {c.tab === "blank" ? (
             <form onSubmit={c.handleBlankSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)", marginBottom: "5px" }}>
-                  {c.isEn ? "Project Slug (ID)" : "Projekt-Kennung (Slug)"}
-                </label>
+                <label style={FIELD_LABEL}>{c.isEn ? "Project Slug (ID)" : "Projekt-Kennung (Slug)"}</label>
                 <input
                   type="text"
                   required
@@ -187,9 +159,7 @@ export function GitRepositoryConnectModal() {
                 />
               </div>
               <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)", marginBottom: "5px" }}>
-                  {c.isEn ? "Display Name" : "Anzeigename"}
-                </label>
+                <label style={FIELD_LABEL}>{c.isEn ? "Display Name" : "Anzeigename"}</label>
                 <input
                   type="text"
                   value={c.displayName}
@@ -220,7 +190,7 @@ export function GitRepositoryConnectModal() {
               style={{ display: "flex", flexDirection: "column", gap: "12px" }}
             >
               <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)", marginBottom: "5px" }}>
+                <label style={FIELD_LABEL}>
                   {c.isEn ? "Git Repository URL (HTTPS or SSH)" : "Git-Repository-URL (HTTPS oder SSH)"}
                 </label>
                 <div style={{ display: "flex", gap: "8px" }}>
@@ -260,9 +230,7 @@ export function GitRepositoryConnectModal() {
               {c.tab === "clone" && (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                   <div>
-                    <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)", marginBottom: "5px" }}>
-                      {c.isEn ? "Workspace ID (Slug)" : "Projekt-Kennung (Slug)"}
-                    </label>
+                    <label style={FIELD_LABEL}>{c.isEn ? "Workspace ID (Slug)" : "Projekt-Kennung (Slug)"}</label>
                     <input
                       type="text"
                       required
@@ -276,16 +244,12 @@ export function GitRepositoryConnectModal() {
                     />
                   </div>
                   <div>
-                    <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)", marginBottom: "5px" }}>
+                    <label style={FIELD_LABEL}>
                       <GitBranch size={11} style={{ display: "inline", marginRight: "4px" }} />
                       {c.isEn ? "Branch (optional)" : "Branch (optional)"}
                     </label>
                     {c.discoveredBranches.length > 0 ? (
-                      <select
-                        value={c.branch}
-                        onChange={(e) => c.setBranch(e.target.value)}
-                        style={{ ...TEXT_INPUT, cursor: "pointer" }}
-                      >
+                      <select value={c.branch} onChange={(e) => c.setBranch(e.target.value)} style={{ ...TEXT_INPUT, cursor: "pointer" }}>
                         {c.discoveredBranches.map((b) => (
                           <option key={b} value={b}>
                             {b}
@@ -314,26 +278,17 @@ export function GitRepositoryConnectModal() {
                 httpsToken={c.httpsToken}
                 onHttpsTokenChange={c.setHttpsToken}
                 hasSavedToken={c.tab === "remote" && Boolean(c.currentProjectMeta?.hasToken)}
-                sshPublicKey={c.tab === "remote" ? c.currentProjectMeta?.sshPublicKey || "" : ""}
+                sshPublicKey={c.activeSshPublicKey}
                 sshPrivateKeyInput={c.sshPrivateKeyInput}
-                onSshPrivateKeyInputChange={c.setSshPrivateKeyInput}
-                canGenerateSshKey={c.tab === "remote"}
+                onSshPrivateKeyInputChange={c.handleSshPrivateKeyInputChange}
+                canGenerateSshKey={c.tab === "clone" || c.tab === "remote"}
                 isGeneratingSsh={c.busy}
                 onGenerateSshKey={c.handleGenerateSshKey}
                 visibility={c.visibility}
                 onVisibilityChange={c.setVisibility}
               />
 
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  fontSize: "12px",
-                  color: "var(--text-secondary)",
-                  cursor: "pointer",
-                }}
-              >
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "var(--text-secondary)", cursor: "pointer" }}>
                 <input
                   type="checkbox"
                   checked={c.scaffoldMdTeam}

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Plus, GitBranch, X, RefreshCw } from "lucide-react";
+import { AlertTriangle, Plus, GitBranch, X, RefreshCw } from "lucide-react";
 import { useGitBranchManager } from "./useGitBranchManager";
 
 export interface GitBranchModalProps {
@@ -10,6 +10,7 @@ export interface GitBranchModalProps {
   isTauri?: boolean;
   tauriRootFolder?: string | null;
   serverGitEnabled?: boolean;
+  isSharedTeamProject?: boolean;
   projectId?: string;
   onListServerBranches?: () => Promise<{
     currentBranch: string;
@@ -30,6 +31,7 @@ export function GitBranchModal({
   isTauri = false,
   tauriRootFolder = null,
   serverGitEnabled = false,
+  isSharedTeamProject = false,
   projectId = "default",
   onListServerBranches,
   onCheckoutServerBranch,
@@ -177,6 +179,30 @@ export function GitBranchModal({
             gap: "16px",
           }}
         >
+          {isSharedTeamProject && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "8px",
+                padding: "9px 12px",
+                borderRadius: "8px",
+                border: "1px solid rgba(245, 158, 11, 0.45)",
+                backgroundColor: "rgba(245, 158, 11, 0.1)",
+                color: "#fcd34d",
+                fontSize: "11.5px",
+                lineHeight: 1.45,
+              }}
+            >
+              <AlertTriangle size={15} style={{ color: "#f59e0b", flexShrink: 0, marginTop: "1px" }} />
+              <span>
+                {isEn
+                  ? "Shared Team Project: Switching branches switches the server working branch for all viewers of this project. Use a Private Developer Workspace for isolated feature-branch work."
+                  : "Team-Projekt: Ein Branch-Wechsel schaltet den Arbeits-Branch für alle Betrachter dieses Projekts um. Für isolierte Feature-Branches empfiehlt sich ein Privater Entwickler-Workspace."}
+              </span>
+            </div>
+          )}
+
           {/* Create Branch Box */}
           <div
             style={{
