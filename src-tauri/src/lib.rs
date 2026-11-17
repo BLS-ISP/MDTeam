@@ -119,6 +119,172 @@ fn git_diff_files(repo_path: String, start_commit: String, end_commit: String) -
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+fn sanitize_git_ref(input: &str, field_name: &str) -> Result<String, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err(format!("Invalid {}: must not be empty", field_name));
+    }
+    if trimmed.starts_with('-') {
+        return Err(format!(
+            "Invalid {}: cannot start with '-' (flag injection blocked)",
+            field_name
+        ));
+    }
+    if trimmed.contains("..")
+        || trimmed.contains("@{")
+        || trimmed.ends_with(".lock")
+        || trimmed.starts_with('/')
+        || trimmed.ends_with('/')
+        || trimmed.starts_with('.')
+        || trimmed.ends_with('.')
+    {
+        return Err(format!("Invalid {}: disallowed git ref sequence", field_name));
+    }
+    if trimmed.chars().any(|c| {
+        c.is_control()
+            || c.is_whitespace()
+            || matches!(c, ':' | '~' | '^' | '?' | '*' | '[' | '\\')
+    }) {
+        return Err(format!(
+            "Invalid {}: contains disallowed characters",
+            field_name
+        ));
+    }
+    Ok(trimmed.to_string())
+}
+
+fn sanitize_git_file_path(input: &str) -> Result<String, String> {
+    let normalized = input.trim().replace('\\', "/");
+    let mut clean = normalized.as_str();
+    while let Some(rest) = clean.strip_prefix("./") {
+        clean = rest;
+    }
+    if clean.is_empty() {
+        return Err("Invalid file_path: must not be empty".to_string());
+    }
+    if clean.starts_with('-') {
+        return Err("Invalid file_path: cannot start with '-' (flag injection blocked)".to_string());
+    }
+    if clean.starts_with('/') || clean.contains(':') {
+        return Err("Invalid file_path: must be a relative repository path".to_string());
+    }
+    if clean.chars().any(|c| c.is_control()) {
+        return Err("Invalid file_path: contains control characters".to_string());
+    }
+    if clean.split('/').any(|seg| seg.is_empty() || seg == "..") {
+        return Err("Invalid file_path: path traversal is not allowed".to_string());
+    }
+    Ok(clean.to_string())
+}
+
+#[tauri::command]
+fn git_current_branch(repo_path: String) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(&["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[tauri::command]
+fn git_list_branches(repo_path: String) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(&["branch", "--format=%(refname:short)|%(HEAD)"])
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[tauri::command]
+fn git_checkout_branch(
+    repo_path: String,
+    branch_name: String,
+    create: bool,
+) -> Result<String, String> {
+    let safe_branch = sanitize_git_ref(&branch_name, "branch_name")?;
+    let args: Vec<&str> = if create {
+        vec!["checkout", "-b", &safe_branch]
+    } else {
+        vec!["checkout", &safe_branch]
+    };
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if stdout.is_empty() {
+        Ok(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    } else {
+        Ok(stdout)
+    }
+}
+
+#[tauri::command]
+fn git_file_history(
+    repo_path: String,
+    file_path: String,
+    limit: usize,
+) -> Result<String, String> {
+    let safe_file = sanitize_git_file_path(&file_path)?;
+    let safe_limit = if limit == 0 { 1 } else { limit.min(500) };
+
+    let output = Command::new("git")
+        .args(&[
+            "log",
+            &format!("-n{}", safe_limit),
+            "--pretty=format:%h|%s|%an|%ad",
+            "--date=format:%d.%m.%Y %H:%M",
+            "--",
+            &safe_file,
+        ])
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+#[tauri::command]
+fn git_show_file_at_commit(
+    repo_path: String,
+    commit_hash: String,
+    file_path: String,
+) -> Result<String, String> {
+    let safe_commit = sanitize_git_ref(&commit_hash, "commit_hash")?;
+    let safe_file = sanitize_git_file_path(&file_path)?;
+    let object_spec = format!("{}:{}", safe_commit, safe_file);
+
+    let output = Command::new("git")
+        .args(&["show", &object_spec])
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -131,7 +297,12 @@ pub fn run() {
             git_commit,
             git_push,
             git_pull,
-            git_diff_files
+            git_diff_files,
+            git_current_branch,
+            git_list_branches,
+            git_checkout_branch,
+            git_file_history,
+            git_show_file_at_commit
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
