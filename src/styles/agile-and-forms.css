@@ -1,0 +1,429 @@
+/* Cheatsheet Panel Styles */
+.cheatsheet-container {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.cheatsheet-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 16px;
+}
+
+.cheatsheet-section:last-child {
+  border-bottom: none;
+}
+
+.cheatsheet-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.cheatsheet-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.cheatsheet-preview {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cheatsheet-preview code {
+  color: var(--text-primary);
+}
+
+.cheatsheet-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.cheatsheet-btn {
+  background-color: var(--accent-indigo);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background-color 0.2s;
+}
+
+.cheatsheet-btn:hover {
+  background-color: #4f46e5;
+}
+
+/* ==========================================
+   Kanban Board Styles
+   ========================================== */
+.kanban-board {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.kanban-column {
+  background-color: var(--bg-panel);
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 250px;
+}
+
+.kanban-column-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.kanban-column-header.in-progress {
+  color: var(--accent-blue);
+}
+
+.kanban-column-header.done {
+  color: var(--accent-green);
+}
+
+.kanban-badge {
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 9px;
+  color: var(--text-secondary);
+}
+
+.kanban-column-header.in-progress .kanban-badge {
+  background-color: rgba(59, 130, 246, 0.15);
+  color: var(--accent-blue);
+}
+
+.kanban-column-header.done .kanban-badge {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: var(--accent-green);
+}
+
+.kanban-card {
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 12px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-left: 3px solid var(--text-muted);
+  transition: transform 0.2s, border-color 0.2s;
+}
+
+.kanban-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.kanban-card.in-progress {
+  border-left-color: var(--accent-blue);
+}
+
+.kanban-card.done {
+  border-left-color: var(--accent-green);
+}
+
+.kanban-card-title {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.kanban-card.done .kanban-card-title {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.kanban-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.kanban-card-assignee {
+  color: var(--accent-indigo);
+  font-weight: 500;
+}
+
+.kanban-card-status-badge {
+  text-transform: uppercase;
+  font-size: 9px;
+  padding: 2px 6px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.kanban-card.in-progress .kanban-card-status-badge {
+  background-color: rgba(59, 130, 246, 0.1);
+  color: var(--accent-blue);
+}
+
+.kanban-card.done .kanban-card-status-badge {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: var(--accent-green);
+}
+
+.cheatsheet-btn:hover {
+  background-color: #4f46e5;
+}
+
+/* ==========================================
+   PM Sub-Tabs Navigation
+   ========================================== */
+.pm-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 20px;
+  padding-bottom: 1px;
+}
+
+.pm-tab-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+}
+
+.pm-tab-btn:hover {
+  color: var(--text-primary) !important;
+  background-color: var(--bg-hover);
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+}
+
+.pm-tab-btn.active {
+  color: var(--accent-indigo) !important;
+  border-bottom: 2px solid var(--accent-indigo) !important;
+  font-weight: 600;
+}
+
+/* ==========================================
+   Retro Board Sticky Notes
+   ========================================== */
+.retro-board {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+
+.retro-column {
+  padding: 14px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 200px;
+}
+
+.retro-column.glad {
+  background-color: rgba(16, 185, 129, 0.02);
+  border: 1px dashed rgba(16, 185, 129, 0.2);
+}
+
+.retro-column.sad {
+  background-color: rgba(239, 68, 68, 0.02);
+  border: 1px dashed rgba(239, 68, 68, 0.2);
+}
+
+.retro-column.impediment {
+  background-color: rgba(245, 158, 11, 0.02);
+  border: 1px dashed rgba(245, 158, 11, 0.2);
+}
+
+.retro-card {
+  background-color: var(--bg-panel);
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s;
+}
+
+.retro-card:hover {
+  transform: translateY(-2px);
+}
+
+.retro-card.glad {
+  border-left: 3px solid var(--accent-green);
+}
+
+.retro-card.sad {
+  border-left: 3px solid var(--accent-red);
+}
+
+.retro-card.impediment {
+  border-left: 3px solid var(--accent-yellow);
+}
+
+/* Visual Form Editor Styles */
+.visual-editor-wrapper {
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+.visual-form-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 8px;
+}
+
+.visual-form-container h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.visual-form-container p {
+  color: var(--text-secondary);
+}
+
+.visual-table th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.visual-table td {
+  padding: 8px;
+}
+
+.visual-table input,
+.visual-table select {
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
+.visual-form-container input[type="text"],
+.visual-form-container input[type="number"],
+.visual-form-container input[type="date"],
+.visual-form-container select {
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.visual-form-container input[type="text"]:focus,
+.visual-form-container input[type="number"]:focus,
+.visual-form-container input[type="date"]:focus,
+.visual-form-container select:focus {
+  outline: none;
+  border-color: var(--accent-indigo) !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.visual-form-container select {
+  cursor: pointer;
+}
+
+.visual-card-milestone {
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.visual-card-milestone:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.visual-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(239, 68, 68, 0.1);
+  color: var(--accent-red);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.visual-delete-btn:hover {
+  background-color: var(--accent-red);
+  color: white;
+}
+
+.visual-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--accent-indigo);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.15s;
+}
+
+.visual-add-btn:hover {
+  background-color: #4f46e5;
+}
+
+/* Recent Projects Switcher */
+.recent-project-row:hover {
+  background-color: var(--bg-hover) !important;
+}
+
+.recent-project-row .recent-project-delete-btn {
+  opacity: 0;
+}
+
+.recent-project-row:hover .recent-project-delete-btn {
+  opacity: 0.6;
+}
+
+.recent-project-row .recent-project-delete-btn:hover {
+  opacity: 1 !important;
+  color: var(--accent-red) !important;
+}
