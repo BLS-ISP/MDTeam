@@ -149,12 +149,13 @@ export function GitConflictResolverModal({
           const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/api/projects/${encodeURIComponent(activeProjectId)}/git/conflicts`, { credentials: "include", headers });
           if (res.ok) {
             const data: any = await res.json();
-            const rawList: any[] = Array.isArray(data) ? data : (data?.conflicts ?? data?.files ?? []);
+            const rawList: any[] = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : (data?.conflicts ?? data?.files ?? []);
             for (const e of rawList) {
               const p = typeof e === "string" ? e : e?.filePath || e?.path;
               if (!p || discovered.has(p)) continue;
-              const raw = (typeof e === "object" && (e.workingTree ?? e.content ?? e.rawContent)) || memMap.get(p)?.content || "";
-              discovered.set(p, buildConflictItem(p, "server", raw, e?.base || "", e?.ours ?? e?.local ?? "", e?.theirs ?? e?.remote ?? ""));
+              const obj = typeof e === "object" && e ? e : data?.versions?.[p];
+              const raw = (obj && (obj.workingTree ?? obj.working ?? obj.content ?? obj.rawContent)) || memMap.get(p)?.content || "";
+              discovered.set(p, buildConflictItem(p, "server", raw, obj?.base || "", obj?.ours ?? obj?.local ?? "", obj?.theirs ?? obj?.remote ?? ""));
             }
           }
         } catch { /* fallback to in-memory conflicts */ }
