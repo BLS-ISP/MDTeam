@@ -102,15 +102,6 @@ function useBuildWorkspaceContextValue() {
     setOpenTabsB,
   });
 
-  const yjsCollab = useYjsCollaboration({
-    activeFilePath,
-    activeFilePathB,
-    splitActive,
-    filesRef,
-    editorRef,
-    editorRefB,
-  });
-
   const docExport = useDocumentExport({
     files,
     activeFile,
@@ -156,6 +147,21 @@ function useBuildWorkspaceContextValue() {
     rawUpsertMultipleFiles: tauriWorkspace.handleUpsertMultipleFiles,
     rawDeleteFile: tauriWorkspace.handleDeleteWorkspaceFile,
     rawUpdateMarkdownContent,
+  });
+
+  const yjsCollab = useYjsCollaboration({
+    activeFilePath,
+    activeFilePathB,
+    splitActive,
+    filesRef,
+    editorRef,
+    editorRefB,
+    projectId: serverBridge.serverMode
+      ? serverBridge.activeProjectId
+      : tauriWorkspace.tauriRootFolder || "local",
+    activeBranch: tauriWorkspace.activeBranch,
+    readOnly: serverBridge.isStakeholderReadOnly,
+    canConnectWs: !serverBridge.serverMode || Boolean(serverBridge.authUser),
   });
 
   const editorActions = useWorkspaceEditorActions({

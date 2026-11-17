@@ -12,6 +12,7 @@ import {
   type InlineMarkdownOptions,
 } from "./markdownInlineAndMermaid";
 import { renderTransclusionCard } from "./markdownTransclusionCard";
+import { sanitizeDrawioEmbedUrl } from "./markdownSecurity";
 
 export { MermaidElement, parseInlineMarkdown, formatInlineMarkdownText, type InlineMarkdownOptions };
 
@@ -246,22 +247,32 @@ export function parseMarkdown(markdown: string, options: MarkdownRenderOptions):
             />
           );
         } else if (currentType === "drawio") {
-          const url = currentCode.trim();
-          elements.push(
-            <iframe
-              key={`drawio-${i}`}
-              src={url}
-              title="Draw.io Diagram"
-              style={{
-                width: "100%",
-                height: "450px",
-                border: "1px solid var(--border-color)",
-                borderRadius: "8px",
-                margin: "16px 0",
-                backgroundColor: "#ffffff",
-              }}
-            />
-          );
+          const safeDrawioUrl = sanitizeDrawioEmbedUrl(currentCode.trim());
+          if (safeDrawioUrl) {
+            elements.push(
+              <iframe
+                key={`drawio-${i}`}
+                src={safeDrawioUrl}
+                title="Draw.io Diagram"
+                sandbox="allow-scripts allow-same-origin"
+                referrerPolicy="no-referrer"
+                style={{
+                  width: "100%",
+                  height: "450px",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "8px",
+                  margin: "16px 0",
+                  backgroundColor: "#ffffff",
+                }}
+              />
+            );
+          } else {
+            elements.push(
+              <pre key={`drawio-blocked-${i}`}>
+                <code>[Blocked untrusted Draw.io embed URL]</code>
+              </pre>
+            );
+          }
         } else {
           elements.push(
             <pre key={`code-${i}`}>

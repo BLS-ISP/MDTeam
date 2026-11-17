@@ -236,19 +236,20 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
       setLdapEnabled(Boolean(health.ldapEnabled));
       setLdapDomain(typeof health.ldapDomain === "string" ? health.ldapDomain : "");
 
+      const effectiveToken = detectedBase === "" ? "" : storedToken;
+      if (detectedBase === "") {
+        setSessionToken("");
+        localStorage.removeItem(TOKEN_KEY);
+      }
+
       try {
-        const me = await apiFetch<{ user: AuthUser }>(
-          "/api/auth/me",
-          {},
-          detectedBase,
-          storedToken
-        );
+        const me = await apiFetch<{ user: AuthUser }>("/api/auth/me", {}, detectedBase, effectiveToken);
         if (me.user) {
           setAuthUser(me.user);
           onAuthChangeRef.current?.(me.user, mapScrumRoleToWorkspaceMode(me.user.role));
           await Promise.allSettled([
-            loadServerWorkspaceFiles(storedProject, detectedBase, storedToken),
-            refreshTeamAndProjects(detectedBase, storedToken, storedProject),
+            loadServerWorkspaceFiles(storedProject, detectedBase, effectiveToken),
+            refreshTeamAndProjects(detectedBase, effectiveToken, storedProject),
           ]);
         }
       } catch {
@@ -282,14 +283,17 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
         body: JSON.stringify({ username, password }),
       });
       setAuthUser(data.user);
-      setSessionToken(data.token);
-      if (typeof window !== "undefined" && data.token) {
-        localStorage.setItem(TOKEN_KEY, data.token);
+      const persistBearer = resolvedApiBase !== "";
+      const effectiveToken = persistBearer ? data.token || "" : "";
+      setSessionToken(effectiveToken);
+      if (typeof window !== "undefined") {
+        if (persistBearer && data.token) localStorage.setItem(TOKEN_KEY, data.token);
+        else localStorage.removeItem(TOKEN_KEY);
       }
       onAuthChangeRef.current?.(data.user, mapScrumRoleToWorkspaceMode(data.user.role));
       await Promise.allSettled([
-        loadServerWorkspaceFiles(activeProjectId, resolvedApiBase, data.token),
-        refreshTeamAndProjects(resolvedApiBase, data.token, activeProjectId),
+        loadServerWorkspaceFiles(activeProjectId, resolvedApiBase, effectiveToken),
+        refreshTeamAndProjects(resolvedApiBase, effectiveToken, activeProjectId),
       ]);
       return data.user;
     },
@@ -328,7 +332,7 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
   );
 
   const syncUpsertServerFile = useCallback(
-    async (file: WorkspaceFile, scrumAction?: ScrumAction, commitMessage?: string) => {
+    async (file: WorkspaceFile, scrumAction?: ScrumAction, commitMessage?: string, autoCommit = true) => {
       if (!serverMode || !authUser) return null;
       return apiFetch<{ file: WorkspaceFile; committed: boolean; commitSha: string }>(
         `/api/projects/${encodeURIComponent(activeProjectId)}/files`,
@@ -340,6 +344,7 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
             content: file.content,
             action: scrumAction,
             message: commitMessage,
+            ...(autoCommit === false ? { autoCommit: false } : {}),
           }),
         }
       );
@@ -352,12 +357,7 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
       if (!serverMode || !authUser) return null;
       return apiFetch<{ deletedPath: string; committed: boolean }>(
         `/api/projects/${encodeURIComponent(activeProjectId)}/files?path=${encodeURIComponent(filePath)}`,
-        {
-          method: "DELETE",
-          body: commitMessage
-            ? JSON.stringify({ path: filePath, message: commitMessage })
-            : undefined,
-        }
+        { method: "DELETE", body: commitMessage ? JSON.stringify({ path: filePath, message: commitMessage }) : undefined }
       );
     },
     [activeProjectId, apiFetch, authUser, serverMode]
@@ -416,6 +416,7 @@ export function useServerBackend(params: UseServerBackendParams = {}) {
     isSyncingServer,
     serverError,
     authUser,
+    sessionToken,
     teamUsers,
     oidcEnabled,
     oidcProvider,

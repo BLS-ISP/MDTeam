@@ -6,33 +6,17 @@ import type { GitAuthType, ProjectVisibility } from "../../types/auth";
 import { useWorkspaceContext } from "../../context/WorkspaceContext";
 
 export function deriveSlugFromGitUrl(rawUrl: string): string {
-  const cleaned = rawUrl
-    .trim()
-    .replace(/\/+$/, "")
-    .replace(/\.git$/i, "");
+  const cleaned = rawUrl.trim().replace(/\/+$/, "").replace(/\.git$/i, "");
   const lastPart = cleaned.split(/[/:]/).pop() || "";
-  return lastPart
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^[-.]+|[-.]+$/g, "")
-    .slice(0, 48);
+  return lastPart.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "").slice(0, 48);
 }
 
 export function useGitRepoModalController() {
   const {
-    language,
-    isGitRepoModalOpen,
-    setIsGitRepoModalOpen,
-    gitRepoModalInitialTab,
-    activeProjectId,
-    projectDetails,
-    authUser,
-    testServerGitRemote,
-    cloneServerGitRepo,
-    createBlankServerProject,
-    updateServerGitRemote,
-    generateServerSshKey,
-    deleteServerProject,
+    language, isGitRepoModalOpen, setIsGitRepoModalOpen, gitRepoModalInitialTab,
+    activeProjectId, projectDetails, authUser, testServerGitRemote, cloneServerGitRepo,
+    createBlankServerProject, updateServerGitRemote, previewPreCloneSshKey,
+    generateServerSshKey, deleteServerProject,
   } = useWorkspaceContext();
 
   const isEn = language === "en";
@@ -47,6 +31,7 @@ export function useGitRepoModalController() {
   const [httpsUsername, setHttpsUsername] = useState("x-access-token");
   const [httpsToken, setHttpsToken] = useState("");
   const [sshPrivateKeyInput, setSshPrivateKeyInput] = useState("");
+  const [cloneSshPublicKey, setCloneSshPublicKey] = useState("");
   const [scaffoldMdTeam, setScaffoldMdTeam] = useState(false);
   const [visibility, setVisibility] = useState<ProjectVisibility>("team");
 
@@ -68,6 +53,7 @@ export function useGitRepoModalController() {
     setDiscoveredBranches([]);
     setHttpsToken("");
     setSshPrivateKeyInput("");
+    setCloneSshPublicKey("");
 
     if (gitRepoModalInitialTab === "remote" && currentProjectMeta) {
       setRemoteUrl(currentProjectMeta.remoteUrl || "");
@@ -114,6 +100,11 @@ export function useGitRepoModalController() {
     }
   };
 
+  const handleSshPrivateKeyInputChange = (val: string) => {
+    setSshPrivateKeyInput(val);
+    setCloneSshPublicKey("");
+  };
+
   const handleTestConnection = async () => {
     setErrorMsg("");
     setStatusMsg("");
@@ -155,6 +146,7 @@ export function useGitRepoModalController() {
         httpsUsername: httpsUsername.trim(),
         httpsToken: httpsToken.trim() || undefined,
         sshPrivateKey: sshPrivateKeyInput.trim() || undefined,
+        sshPublicKey: cloneSshPublicKey.trim() || undefined,
         scaffoldMdTeam,
         visibility,
       });
@@ -222,7 +214,13 @@ export function useGitRepoModalController() {
     setBusy(true);
     setErrorMsg("");
     try {
-      await generateServerSshKey(activeProjectId);
+      if (tab === "clone") {
+        const preview = await previewPreCloneSshKey();
+        setCloneSshPublicKey(preview.sshPublicKey);
+        setSshPrivateKeyInput(preview.sshPrivateKey);
+      } else {
+        await generateServerSshKey(activeProjectId);
+      }
       setAuthType("ssh");
       setStatusMsg(
         isEn
@@ -262,6 +260,9 @@ export function useGitRepoModalController() {
           (currentProjectMeta?.ownerId && currentProjectMeta.ownerId === authUser.id))
     );
 
+  const activeSshPublicKey =
+    tab === "remote" ? currentProjectMeta?.sshPublicKey || "" : cloneSshPublicKey;
+
   return {
     isEn,
     isGitRepoModalOpen,
@@ -287,7 +288,8 @@ export function useGitRepoModalController() {
     httpsToken,
     setHttpsToken,
     sshPrivateKeyInput,
-    setSshPrivateKeyInput,
+    handleSshPrivateKeyInputChange,
+    activeSshPublicKey,
     scaffoldMdTeam,
     setScaffoldMdTeam,
     visibility,
