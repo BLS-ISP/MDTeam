@@ -47,6 +47,25 @@ jobs:
           tags: ${{ steps.meta-web.outputs.tags }}
           labels: ${{ steps.meta-web.outputs.labels }}
 
+      # --- Build & Push Multi-User API & Git-Bridge Server ---
+      - name: Extract metadata (tags, labels) for API Server
+        id: meta-api
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/api-server
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - name: Build and push API Server Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.api
+          push: true
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+
       # --- Build & Push Yjs Collaboration Server ---
       - name: Extract metadata (tags, labels) for Yjs Server
         id: meta-yjs

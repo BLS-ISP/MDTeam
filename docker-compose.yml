@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   workspace-web:
     build:
@@ -9,7 +7,25 @@ services:
       - "80:80"
     restart: always
     depends_on:
+      - api-server
       - yjs-server
+
+  api-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "4000:4000"
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - HOST=0.0.0.0
+      - DATA_DIR=/data
+      - MDTEAM_INITIAL_PASSWORD=${MDTEAM_INITIAL_PASSWORD:-mdteam-dev-2026}
+      - MDTEAM_COOKIE_SECURE=${MDTEAM_COOKIE_SECURE:-false}
+    volumes:
+      - mdteam-data:/data
 
   yjs-server:
     build:
@@ -21,3 +37,6 @@ services:
     environment:
       - PORT=1234
       - HOST=0.0.0.0
+
+volumes:
+  mdteam-data:
