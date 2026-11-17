@@ -10,12 +10,18 @@ import {
   generateNextIssueId,
   appendCompletedSprintToCapacity,
 } from "../../utils/issueEngine";
+import {
+  computeStrictSprintVelocity,
+  evaluateStrictSprintVelocityBreakdown,
+} from "../../utils/scrum-rules/scrumPolicyEngine";
+import type { ScrumPolicyConfig } from "../../types/scrumPolicy";
 import { ScrumCopy } from "./scrumI18nAndStyles";
 
 export interface UseScrumSprintActionsParams {
   files: WorkspaceFile[];
   allIssues: AgileIssue[];
   sprints: AgileSprint[];
+  policy?: ScrumPolicyConfig;
   language: "de" | "en";
   t: ScrumCopy;
   drawerIssue: AgileIssue | null;
@@ -31,6 +37,7 @@ export function useScrumSprintActions({
   files,
   allIssues,
   sprints,
+  policy,
   language,
   t,
   drawerIssue,
@@ -81,8 +88,11 @@ export function useScrumSprintActions({
     const lastEnd = sprints[sprints.length - 1]?.endDate || "2026-06-14";
     const startMs = Date.parse(lastEnd) + 24 * 60 * 60 * 1000;
     const safeStartMs = Number.isFinite(startMs) ? startMs : Date.now();
+    const durationDays = Math.max(1, Math.min(31, policy?.sprintDurationDays || 14));
     const startDate = new Date(safeStartMs).toISOString().slice(0, 10);
-    const endDate = new Date(safeStartMs + 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const endDate = new Date(safeStartMs + (durationDays - 1) * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
 
     const newSprint: AgileSprint = {
       id,
@@ -117,9 +127,11 @@ export function useScrumSprintActions({
     const sprintTickets = allIssues.filter(
       (i) => i.sprint.toLowerCase() === sprint.id.toLowerCase() && i.type !== "epic"
     );
-    const doneSp = sprintTickets
-      .filter((i) => i.status === "done")
-      .reduce((s, i) => s + (i.storyPoints || 0), 0);
+
+    // Scrum Guide 0-SP-for-undone rule: only DoD-compliant Done items count toward velocity!
+    const strictBreakdown = evaluateStrictSprintVelocityBreakdown(sprintTickets);
+    const strictDoneSp = computeStrictSprintVelocity(sprintTickets);
+
     const plannedSp =
       sprint.committedPoints > 0
         ? sprint.committedPoints
@@ -135,14 +147,13 @@ export function useScrumSprintActions({
       serializeSprintToMarkdown({
         ...sprint,
         state: "closed",
-        completedPoints: doneSp,
+        completedPoints: strictDoneSp,
       })
     );
 
     const nowIso = new Date().toISOString();
-    sprintTickets
-      .filter((i) => i.status !== "done" && !i.isVirtualLegacy)
-      .forEach((unfinished) => {
+    for (const unfinished of strictBreakdown.unfinishedIssues) {
+      if (!unfinished.isVirtualLegacy) {
         batch.push(
           serializeIssueToMarkdown({
             ...unfinished,
@@ -150,12 +161,31 @@ export function useScrumSprintActions({
             updatedAt: nowIso,
           })
         );
-      });
+      }
+    }
+    for (const dodFailed of strictBreakdown.dodViolatingDoneIssues) {
+      if (!dodFailed.isVirtualLegacy) {
+        batch.push(
+          serializeIssueToMarkdown({
+            ...dodFailed,
+            status: "review",
+            sprint: rolloverSprintId,
+            updatedAt: nowIso,
+          })
+        );
+      }
+    }
 
-    batch.push(appendCompletedSprintToCapacity(files, sprint.name, plannedSp, doneSp));
+    batch.push(appendCompletedSprintToCapacity(files, sprint.name, plannedSp, strictDoneSp));
 
     upsertBatch(batch);
-    onShowToast(t.sprintCompletedToast);
+    const zeroedInfo =
+      strictBreakdown.undonePointsZeroed > 0
+        ? language === "en"
+          ? ` (Velocity: ${strictDoneSp} SP • ${strictBreakdown.undonePointsZeroed} undone SP = 0)`
+          : ` (Velocity: ${strictDoneSp} SP • ${strictBreakdown.undonePointsZeroed} unfertige SP = 0)`
+        : ` (${strictDoneSp} SP)`;
+    onShowToast(`${t.sprintCompletedToast}${zeroedInfo}`);
   };
 
   const handleConvertLegacyBacklog = () => {

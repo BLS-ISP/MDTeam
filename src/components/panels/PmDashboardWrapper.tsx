@@ -22,6 +22,7 @@ export function PmDashboardWrapper() {
     handleCreateBranchFromIssue,
     yjsUrl,
     currentUser,
+    effectiveScrumRole,
   } = useWorkspaceContext();
 
   const roadmapItems = parseRoadmapItems(files);
@@ -119,6 +120,7 @@ export function PmDashboardWrapper() {
             onCreateBranchFromIssue={handleCreateBranchFromIssue}
             yjsUrl={yjsUrl}
             currentUser={currentUser}
+            userRole={effectiveScrumRole}
             language={language}
           />
         </div>

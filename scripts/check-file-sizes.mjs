@@ -7,7 +7,7 @@ const MAX_LINES = 500;
 const EXTENSIONS = new Set([".ts", ".tsx", ".css", ".rs"]);
 const IGNORE_DIRS = new Set(["node_modules", ".next", "dist", "target", "out"]);
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SCAN_DIRS = ["src", "server/src", "src-tauri/src"];
+const SCAN_DIRS = ["src", "server/src", "src-tauri/src", "tests"];
 
 function countLines(filePath) {
   const raw = fs.readFileSync(filePath, "utf8");

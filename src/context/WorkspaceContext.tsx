@@ -10,7 +10,9 @@ import { useTauriWorkspace } from "../hooks/useTauriWorkspace";
 import { useYjsCollaboration } from "../hooks/useYjsCollaboration";
 import { useDocumentExport } from "../hooks/useDocumentExport";
 import { useWorkspaceEditorActions } from "../hooks/useWorkspaceEditorActions";
+import { useWorkspaceServerBridge } from "../hooks/useWorkspaceServerBridge";
 import { applyMonacoDiagnosticsMarkers } from "../utils/workspace/monacoSetup";
+import { isDocumentWriteProtected } from "../utils/wiki/documentProtection";
 
 export type WorkspacePanelId =
   | "explorer"
@@ -117,6 +119,45 @@ function useBuildWorkspaceContextValue() {
     language,
   });
 
+  const applyRoleMode = (nextMode: WorkspaceRoleMode) => {
+    setRoleMode(nextMode);
+    if (nextMode === "scrum") {
+      setActivePanel("pm");
+      setPmSubTab("scrum");
+    } else if (nextMode === "stakeholder") {
+      setSplitActive(false);
+      setShowProblemsPanel(false);
+      setStakeholderEditVisual(false);
+      if (activePanel === "git" || activePanel === "cheatsheet" || activePanel === "settings") {
+        setActivePanel("explorer");
+      }
+    }
+  };
+
+  const rawUpdateMarkdownContent = (targetPath: string, content: string) => {
+    const targetObj = filesRef.current.find((f) => f.path === targetPath);
+    if (targetObj && isDocumentWriteProtected(targetObj).locked) return;
+    setFiles((prev) => prev.map((f) => (f.path === targetPath ? { ...f, content } : f)));
+    tauriWorkspace.setModifiedFiles((prev) => ({ ...prev, [targetPath]: true }));
+  };
+
+  const serverBridge = useWorkspaceServerBridge({
+    isTauri: tauriWorkspace.isTauri,
+    tauriRootFolder: tauriWorkspace.tauriRootFolder,
+    files,
+    filesRef,
+    setFiles,
+    setCategories,
+    roleMode,
+    onApplyRoleMode: applyRoleMode,
+    currentUser,
+    setCurrentUser,
+    rawUpsertFile: tauriWorkspace.handleUpsertWorkspaceFile,
+    rawUpsertMultipleFiles: tauriWorkspace.handleUpsertMultipleFiles,
+    rawDeleteFile: tauriWorkspace.handleDeleteWorkspaceFile,
+    rawUpdateMarkdownContent,
+  });
+
   const editorActions = useWorkspaceEditorActions({
     files,
     setFiles,
@@ -140,25 +181,23 @@ function useBuildWorkspaceContextValue() {
     currentUser,
     tauriRootFolder: tauriWorkspace.tauriRootFolder,
     setModifiedFiles: tauriWorkspace.setModifiedFiles,
-    handleUpsertWorkspaceFile: tauriWorkspace.handleUpsertWorkspaceFile,
+    handleUpsertWorkspaceFile: serverBridge.handleUpsertWorkspaceFile,
     setActivePanel,
     editorRef,
     editorRefB,
   });
 
   const handleRoleModeChange = (nextMode: WorkspaceRoleMode) => {
-    setRoleMode(nextMode);
-    if (nextMode === "scrum") {
-      setActivePanel("pm");
-      setPmSubTab("scrum");
-    } else if (nextMode === "stakeholder") {
-      setSplitActive(false);
-      setShowProblemsPanel(false);
-      setStakeholderEditVisual(false);
-      if (activePanel === "git" || activePanel === "cheatsheet" || activePanel === "settings") {
-        setActivePanel("explorer");
-      }
+    if (serverBridge.serverMode && serverBridge.authUser?.role === "stakeholder" && nextMode !== "stakeholder") {
+      applyRoleMode("stakeholder");
+      return;
     }
+    applyRoleMode(nextMode);
+  };
+
+  const handleEditorChange = (value: string | undefined) => {
+    if (value === undefined) return;
+    serverBridge.updateMarkdownFileContent(activeFilePath, value);
   };
 
   useEffect(() => {
@@ -261,6 +300,8 @@ function useBuildWorkspaceContextValue() {
     ...yjsCollab,
     ...docExport,
     ...editorActions,
+    ...serverBridge,
+    handleEditorChange,
   };
 }
 

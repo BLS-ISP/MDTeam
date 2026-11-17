@@ -1,8 +1,10 @@
 "use client";
 
 import React from "react";
-import { Sparkles } from "lucide-react";
+import { KeyRound, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { WorkspaceHeaderControls } from "../CommandPaletteAndModals";
+import { getRoleBadgeMeta } from "../auth";
+import { canRolePerform } from "../../types/auth";
 import { useWorkspaceContext } from "../../context/WorkspaceContext";
 
 export function AppTopBar() {
@@ -24,9 +26,17 @@ export function AppTopBar() {
     setIsGitBranchModalOpen,
     setIsCommandPaletteOpen,
     setIsImportModalOpen,
+    serverMode,
+    authUser,
+    isStakeholderReadOnly,
+    setIsAuthModalOpen,
+    setIsTeamAdminModalOpen,
   } = useWorkspaceContext();
 
   const unsavedCount = Object.keys(modifiedFiles).length;
+  const roleBadge = authUser ? getRoleBadgeMeta(authUser.role) : null;
+  const roleLabel = roleBadge ? (language === "en" ? roleBadge.labelEn : roleBadge.labelDe) : "";
+  const canOpenAdmin = !serverMode || !authUser || canRolePerform(authUser.role, "manage_users");
 
   return (
     <header className="app-header">
@@ -38,26 +48,101 @@ export function AppTopBar() {
         <span className="logo-badge">Jira • Confluence • arc42</span>
       </div>
 
-      <div className="header-status" style={{ gap: "10px" }}>
+      <div className="header-status" style={{ gap: "8px" }}>
         <div className="status-indicator">
           <span className={`status-dot ${unsavedCount > 0 ? "syncing" : ""}`} />
           <span>{unsavedCount > 0 ? `${unsavedCount} ${t.unsavedChanges}` : t.syncedWithGit}</span>
         </div>
 
+        {/* Multi-User Auth & SSO Trigger */}
+        <button
+          type="button"
+          onClick={() => setIsAuthModalOpen(true)}
+          title={
+            language === "en"
+              ? "Server Connection, SSO & Scrum Account Login"
+              : "Server-Verbindung, SSO & Scrum-Anmeldung"
+          }
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            height: "28px",
+            padding: "0 10px",
+            borderRadius: "6px",
+            border: authUser
+              ? `1px solid ${roleBadge?.color || "var(--border-color)"}`
+              : "1px solid var(--border-color)",
+            backgroundColor: authUser
+              ? roleBadge?.bgColor || "var(--bg-panel)"
+              : "var(--bg-panel)",
+            color: authUser ? roleBadge?.color || "var(--text-primary)" : "var(--text-secondary)",
+            fontSize: "11px",
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          {authUser ? <ShieldCheck size={12} /> : <KeyRound size={12} style={{ color: "var(--accent-indigo)" }} />}
+          <span>
+            {authUser
+              ? `${authUser.displayName} • ${roleLabel}`
+              : serverMode
+              ? language === "en"
+                ? "Sign In / SSO"
+                : "Anmelden / SSO"
+              : language === "en"
+              ? "Server / Auth"
+              : "Server / Login"}
+          </span>
+        </button>
+
+        {/* Team RBAC & Webhooks Admin Trigger */}
+        {canOpenAdmin && (
+          <button
+            type="button"
+            onClick={() => setIsTeamAdminModalOpen(true)}
+            title={
+              language === "en"
+                ? "Team Accounts, OIDC SSO & Teams/Slack Webhooks"
+                : "Team-Konten, OIDC SSO & Teams/Slack-Webhooks"
+            }
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              height: "28px",
+              padding: "0 9px",
+              borderRadius: "6px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-panel)",
+              color: "var(--text-secondary)",
+              fontSize: "11px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            <Users size={12} style={{ color: "var(--accent-indigo)" }} />
+            <span>{language === "en" ? "Team & Webhooks" : "Team & Webhooks"}</span>
+          </button>
+        )}
+
         <WorkspaceHeaderControls
           roleMode={roleMode}
           onRoleModeChange={handleRoleModeChange}
           currentUser={currentUser}
-          onCurrentUserChange={setCurrentUser}
+          onCurrentUserChange={(nextHandle) => {
+            if (serverMode && authUser) return;
+            setCurrentUser(nextHandle);
+          }}
           files={files}
           onOpenFile={(filePath) => {
             handleOpenFile(filePath);
             setActivePanel("explorer");
           }}
           language={language}
-          currentBranch={roleMode === "stakeholder" ? undefined : activeBranch}
+          currentBranch={isStakeholderReadOnly ? undefined : activeBranch}
           onOpenGitBranchModal={
-            roleMode === "stakeholder"
+            isStakeholderReadOnly
               ? undefined
               : () => {
                   setPendingBranchName("");
@@ -66,7 +151,7 @@ export function AppTopBar() {
                 }
           }
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-          onOpenImportModal={() => setIsImportModalOpen(true)}
+          onOpenImportModal={isStakeholderReadOnly ? undefined : () => setIsImportModalOpen(true)}
         />
 
         <div
@@ -92,7 +177,6 @@ export function AppTopBar() {
               fontSize: "11px",
               fontWeight: 600,
               cursor: "pointer",
-              transition: "all 0.2s",
             }}
           >
             DE
@@ -109,7 +193,6 @@ export function AppTopBar() {
               fontSize: "11px",
               fontWeight: 600,
               cursor: "pointer",
-              transition: "all 0.2s",
             }}
           >
             EN

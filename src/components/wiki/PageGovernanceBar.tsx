@@ -75,6 +75,7 @@ export function PageGovernanceBar({
   onOpenHistory,
   onOpenTemplates,
   onExportDocx,
+  hideLockBanner = false,
 }: PageGovernanceBarProps) {
   const isEn = language === "en";
   const workspaceCtx = useOptionalWorkspaceContext();
@@ -192,7 +193,10 @@ export function PageGovernanceBar({
           <div style={{ position: "relative" }}>
             <button
               type="button"
-              onClick={() => setStatusMenuOpen((prev) => !prev)}
+              disabled={Boolean(workspaceCtx?.isStakeholderReadOnly)}
+              onClick={() => {
+                if (!workspaceCtx?.isStakeholderReadOnly) setStatusMenuOpen((prev) => !prev);
+              }}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -204,7 +208,7 @@ export function PageGovernanceBar({
                 backgroundColor: currentCfg.bg,
                 color: currentCfg.color,
                 border: `1px solid ${currentCfg.border}`,
-                cursor: "pointer",
+                cursor: workspaceCtx?.isStakeholderReadOnly ? "default" : "pointer",
               }}
               title={isEn ? "Change document review lifecycle status" : "Dokument-Freigabestatus ändern"}
             >
@@ -355,7 +359,7 @@ export function PageGovernanceBar({
         </div>
       </div>
 
-      {protection.locked && !isVisualPaneActive && (
+      {!hideLockBanner && protection.locked && !isVisualPaneActive && (
         <ApprovalLockBanner
           file={activeFile}
           reason={protection.reason}
@@ -363,8 +367,8 @@ export function PageGovernanceBar({
           revision={revisionNum || undefined}
           language={language}
           compact
-          onStartNewRevision={handleStartNewRevision}
-          onSupersedeAdr={handleSupersedeAdr}
+          onStartNewRevision={workspaceCtx?.isStakeholderReadOnly ? undefined : handleStartNewRevision}
+          onSupersedeAdr={workspaceCtx?.isStakeholderReadOnly ? undefined : handleSupersedeAdr}
         />
       )}
     </div>

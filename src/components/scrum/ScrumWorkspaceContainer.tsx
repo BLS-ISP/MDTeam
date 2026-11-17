@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { Tag } from "lucide-react";
 import {
   WorkspaceFile,
   AgileIssue,
@@ -11,14 +10,18 @@ import {
   parseSprints,
   parseReleases,
   serializeReleasesToMarkdown,
-  computeReleaseProgress,
   computeSprintMetrics,
   createBlankIssue,
   parseCapacityAndVelocity,
   extractImpediments,
 } from "../../utils/issueEngine";
+import type { ScrumUserRole } from "../../types/scrumPolicy";
+import { parseScrumPolicy } from "../../utils/scrum-rules/scrumPolicyEngine";
 import IssueDrawer from "../IssueDrawer";
 import PlanningPokerModal from "../PlanningPokerModal";
+import { ScrumPolicyAndGoalBar } from "./ceremonies";
+import { ScrumCeremoniesHost } from "./ScrumCeremoniesHost";
+import { ScrumReleasesQuickStrip } from "./ScrumReleasesQuickStrip";
 import {
   DEFAULT_WIP_LIMITS,
   SwimlaneMode,
@@ -31,6 +34,7 @@ import { GanttRoadmapTab } from "./GanttRoadmapTab";
 import { AgileMetricsTab } from "./AgileMetricsTab";
 import { ReleasesTab } from "./ReleasesTab";
 import { useScrumSprintActions } from "./useScrumSprintActions";
+import { useScrumPolicyGates } from "./useScrumPolicyGates";
 
 export type ScrumExtendedTabId = ScrumTabId | "releases";
 
@@ -43,6 +47,7 @@ export interface ScrumWorkspaceProps {
   onCreateBranchFromIssue?: (issue: AgileIssue, branchName: string) => void;
   yjsUrl?: string;
   currentUser: string;
+  userRole?: ScrumUserRole;
   language: "de" | "en";
   initialTab?: ScrumExtendedTabId;
 }
@@ -56,6 +61,7 @@ export function ScrumWorkspace({
   onCreateBranchFromIssue,
   yjsUrl,
   currentUser,
+  userRole,
   language,
   initialTab = "board",
 }: ScrumWorkspaceProps) {
@@ -123,17 +129,20 @@ export function ScrumWorkspace({
     setTimeout(() => setToastMsg(null), 3200);
   };
 
+  const parsedPolicySnapshot = useMemo(() => parseScrumPolicy(files), [files]);
+
   const {
-    handleSaveIssue,
+    handleSaveIssue: rawHandleSaveIssue,
     handleDeleteIssue,
     handleCreateNewSprint,
-    handleStartSprint,
+    handleStartSprint: rawHandleStartSprint,
     handleCompleteSprint,
     handleConvertLegacyBacklog,
   } = useScrumSprintActions({
     files,
     allIssues,
     sprints,
+    policy: parsedPolicySnapshot,
     language,
     t,
     drawerIssue,
@@ -142,6 +151,30 @@ export function ScrumWorkspace({
     onDeleteFile,
     onSetDrawerIssue: setDrawerIssue,
     onSetDrawerIsNew: setDrawerIsNew,
+    onShowToast: showToast,
+  });
+
+  const {
+    policy,
+    orderedBacklogItems,
+    activeCeremony,
+    setActiveCeremony,
+    gatePrompt,
+    setGatePrompt,
+    handleUpdatePolicy,
+    handleGatedSaveIssue,
+    handleGatedStartSprint,
+    handleGatedReorderBacklog,
+  } = useScrumPolicyGates({
+    files,
+    allIssues,
+    sprints,
+    currentUser,
+    userRole,
+    language,
+    rawSaveIssue: rawHandleSaveIssue,
+    rawStartSprint: rawHandleStartSprint,
+    onUpsertFile,
     onShowToast: showToast,
   });
 
@@ -193,7 +226,7 @@ export function ScrumWorkspace({
     const found = allIssues.find((i) => i.id === draggedIssueId);
     setDraggedIssueId(null);
     if (!found || found.status === targetStatus) return;
-    handleSaveIssue({ ...found, status: targetStatus });
+    handleGatedSaveIssue({ ...found, status: targetStatus });
   };
 
   const handleDropOnSprint = (targetSprintId: string) => {
@@ -204,7 +237,7 @@ export function ScrumWorkspace({
     if (!found || found.sprint === targetSprintId) return;
     const nextStatus: IssueStatus =
       targetSprintId && found.status === "backlog" ? "ready" : found.status;
-    handleSaveIssue({ ...found, sprint: targetSprintId, status: nextStatus });
+    handleGatedSaveIssue({ ...found, sprint: targetSprintId, status: nextStatus });
   };
 
   return (
@@ -235,44 +268,29 @@ export function ScrumWorkspace({
         onDismissToast={() => setToastMsg(null)}
       />
 
-      {/* Releases Tab & FixVersion Quick Strip */}
-      <div style={{ padding: "6px 24px", backgroundColor: "var(--bg-panel)", borderBottom: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <button
-            type="button"
-            onClick={() => setActiveTab(activeTab === "releases" ? "board" : "releases")}
-            style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 11px", borderRadius: "6px", border: activeTab === "releases" ? "1px solid var(--accent-indigo)" : "1px solid var(--border-color)", backgroundColor: activeTab === "releases" ? "rgba(99, 102, 241, 0.18)" : "var(--bg-sidebar)", color: activeTab === "releases" ? "var(--accent-indigo)" : "var(--text-secondary)", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
-          >
-            <Tag size={13} style={{ color: "var(--accent-green)" }} />
-            {t.tabs.releases} ({releases.length})
-          </button>
-          {activeTab === "releases" && (
-            <button type="button" onClick={() => setActiveTab("board")} style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: "11.5px", cursor: "pointer", fontWeight: 600 }}>
-              {t.backToBoardBtn}
-            </button>
-          )}
-        </div>
+      {/* Scrum Guide Product Goal, Process Mode & 4 Ceremonies Bar */}
+      <ScrumPolicyAndGoalBar
+        policy={policy}
+        files={files}
+        activeSprint={activeSprint}
+        currentUser={currentUser}
+        userRole={userRole}
+        language={language}
+        onUpdatePolicy={handleUpdatePolicy}
+        onUpsertFile={onUpsertFile}
+        onLaunchCeremony={(ceremonyId) => setActiveCeremony(ceremonyId)}
+      />
 
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-          {releases.slice(0, 4).map((rel) => {
-            const prog = computeReleaseProgress(rel, allIssues);
-            const filterTok = `fixversion:${rel.version}`;
-            const isFiltered = jqlQuery.toLowerCase().includes(filterTok.toLowerCase());
-            return (
-              <button
-                key={rel.id}
-                type="button"
-                onClick={() => (activeTab === "board" ? toggleQuickFilter(filterTok) : setActiveTab("releases"))}
-                style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "2px 8px", borderRadius: "999px", border: isFiltered ? "1px solid var(--accent-green)" : "1px solid var(--border-color)", backgroundColor: isFiltered ? "rgba(16, 185, 129, 0.16)" : "var(--bg-sidebar)", color: isFiltered ? "var(--accent-green)" : "var(--text-secondary)", fontSize: "10.5px", fontFamily: "var(--font-mono)", cursor: "pointer" }}
-                title={`${rel.name} (${prog.doneIssues}/${prog.totalIssues} Done)`}
-              >
-                <strong>{rel.version}</strong>
-                <span style={{ color: "var(--text-muted)" }}>{prog.pointsProgressPercent}%</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* Releases Tab & FixVersion Quick Strip */}
+      <ScrumReleasesQuickStrip
+        t={t}
+        activeTab={activeTab}
+        releases={releases}
+        allIssues={allIssues}
+        jqlQuery={jqlQuery}
+        onSetActiveTab={setActiveTab}
+        onToggleQuickFilter={toggleQuickFilter}
+      />
 
       {activeTab === "board" && (
         <KanbanBoardTab
@@ -282,6 +300,8 @@ export function ScrumWorkspace({
           sprints={sprints}
           activeSprint={activeSprint}
           currentUser={currentUser}
+          userRole={userRole}
+          policy={policy}
           boardScope={boardScope}
           jqlQuery={jqlQuery}
           swimlaneMode={swimlaneMode}
@@ -306,23 +326,28 @@ export function ScrumWorkspace({
         <BacklogPlanningTab
           t={t}
           allIssues={allIssues}
+          orderedBacklogItems={orderedBacklogItems}
           sprints={sprints}
           activeSprint={activeSprint}
           activeSprintMetrics={activeSprintMetrics}
           capacity={capacity}
           totalCapacitySp={totalCapacitySp}
           unmigratedLegacyCount={unmigratedLegacyCount}
+          draggedIssueId={draggedIssueId}
           dragOverTarget={dragOverTarget}
+          policy={policy}
+          userRole={userRole}
           onSetDraggedIssueId={setDraggedIssueId}
           onSetDragOverTarget={setDragOverTarget}
           onDropOnSprint={handleDropOnSprint}
+          onReorderBacklog={handleGatedReorderBacklog}
           onConvertLegacyBacklog={handleConvertLegacyBacklog}
           onOpenPoker={(issueId) => {
             setPokerIssueId(issueId);
             setPokerOpen(true);
           }}
           onCreateNewSprint={handleCreateNewSprint}
-          onStartSprint={handleStartSprint}
+          onStartSprint={handleGatedStartSprint}
           onCompleteSprint={handleCompleteSprint}
           onOpenCreateIssue={handleOpenCreateIssue}
           onSelectIssue={handleSelectIssue}
@@ -331,84 +356,56 @@ export function ScrumWorkspace({
 
       {activeTab === "roadmap" && (
         <GanttRoadmapTab
-          t={t}
-          allIssues={allIssues}
-          files={files}
-          roadmapZoom={roadmapZoom}
-          roadmapFilter={roadmapFilter}
-          onSetRoadmapZoom={setRoadmapZoom}
-          onSetRoadmapFilter={setRoadmapFilter}
-          onOpenFile={onOpenFile}
-          onSelectIssue={handleSelectIssue}
+          t={t} allIssues={allIssues} files={files}
+          roadmapZoom={roadmapZoom} roadmapFilter={roadmapFilter}
+          onSetRoadmapZoom={setRoadmapZoom} onSetRoadmapFilter={setRoadmapFilter}
+          onOpenFile={onOpenFile} onSelectIssue={handleSelectIssue}
         />
       )}
 
       {activeTab === "metrics" && (
         <AgileMetricsTab
-          t={t}
-          allIssues={allIssues}
-          sprints={sprints}
-          activeSprint={activeSprint}
-          impediments={impediments}
-          metricsSprintId={metricsSprintId}
-          onSetMetricsSprintId={setMetricsSprintId}
-          onOpenFile={onOpenFile}
-          onSelectIssue={handleSelectIssue}
+          t={t} allIssues={allIssues} sprints={sprints} activeSprint={activeSprint}
+          impediments={impediments} metricsSprintId={metricsSprintId}
+          onSetMetricsSprintId={setMetricsSprintId} onOpenFile={onOpenFile} onSelectIssue={handleSelectIssue}
         />
       )}
 
       {activeTab === "releases" && (
         <ReleasesTab
-          t={t}
-          language={language}
-          files={files}
-          allIssues={allIssues}
-          releases={releases}
-          onSaveReleases={handleSaveReleases}
-          onSaveIssue={handleSaveIssue}
-          onUpsertFile={onUpsertFile}
-          onOpenFile={onOpenFile}
-          onSelectIssue={handleSelectIssue}
-          onShowToast={showToast}
+          t={t} language={language} files={files} allIssues={allIssues} releases={releases}
+          onSaveReleases={handleSaveReleases} onSaveIssue={handleGatedSaveIssue}
+          onUpsertFile={onUpsertFile} onOpenFile={onOpenFile}
+          onSelectIssue={handleSelectIssue} onShowToast={showToast}
         />
       )}
 
       <IssueDrawer
-        issue={drawerIssue}
-        isOpen={Boolean(drawerIssue)}
-        isNew={drawerIsNew}
-        epics={epics}
-        sprints={sprints}
-        releases={releases}
-        allIssues={allIssues}
-        currentUser={currentUser}
-        language={language}
-        onClose={() => {
-          setDrawerIssue(null);
-          setDrawerIsNew(false);
-        }}
-        onSave={handleSaveIssue}
+        issue={drawerIssue} isOpen={Boolean(drawerIssue)} isNew={drawerIsNew}
+        epics={epics} sprints={sprints} releases={releases} allIssues={allIssues}
+        currentUser={currentUser} language={language}
+        onClose={() => { setDrawerIssue(null); setDrawerIsNew(false); }}
+        onSave={handleGatedSaveIssue}
         onDelete={onDeleteFile ? handleDeleteIssue : undefined}
-        onOpenMarkdownFile={(path) => {
-          setDrawerIssue(null);
-          onOpenFile(path);
-        }}
-        onCreateBranch={(iss, branchName) => {
-          onCreateBranchFromIssue?.(iss, branchName);
-        }}
+        onOpenMarkdownFile={(path) => { setDrawerIssue(null); onOpenFile(path); }}
+        onCreateBranch={(iss, branchName) => onCreateBranchFromIssue?.(iss, branchName)}
       />
 
       <PlanningPokerModal
-        isOpen={pokerOpen}
-        onClose={() => setPokerOpen(false)}
-        issues={allIssues}
-        initialIssueId={pokerIssueId}
-        currentUser={currentUser}
-        yjsUrl={yjsUrl}
-        language={language}
-        onApplyEstimate={(iss, points) => {
-          handleSaveIssue({ ...iss, storyPoints: points });
-        }}
+        isOpen={pokerOpen} onClose={() => setPokerOpen(false)}
+        issues={allIssues} initialIssueId={pokerIssueId}
+        currentUser={currentUser} yjsUrl={yjsUrl} language={language}
+        onApplyEstimate={(iss, points) => handleGatedSaveIssue({ ...iss, storyPoints: points })}
+      />
+
+      <ScrumCeremoniesHost
+        files={files} allIssues={allIssues} sprints={sprints} activeSprint={activeSprint}
+        policy={policy} currentUser={currentUser} userRole={userRole} language={language}
+        activeCeremony={activeCeremony} gatePrompt={gatePrompt}
+        onCloseCeremony={() => setActiveCeremony(null)}
+        onCloseGatePrompt={() => setGatePrompt(null)}
+        onOpenIssue={handleSelectIssue}
+        onUpsertFile={onUpsertFile} onUpsertMultipleFiles={onUpsertMultipleFiles}
       />
     </div>
   );

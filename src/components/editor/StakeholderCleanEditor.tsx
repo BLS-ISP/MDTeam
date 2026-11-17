@@ -18,6 +18,7 @@ export function StakeholderCleanEditor({ renderedPreview }: { renderedPreview: R
     setActivePanel,
     setPmSubTab,
     setShowExportModal,
+    isStakeholderReadOnly,
   } = useWorkspaceContext();
 
   return (
@@ -69,20 +70,22 @@ export function StakeholderCleanEditor({ renderedPreview }: { renderedPreview: R
             >
               {language === "en" ? "Wiki Reader" : "Wiki-Ansicht"}
             </button>
-            <button
-              onClick={() => setStakeholderEditVisual(true)}
-              style={{
-                background: stakeholderEditVisual ? "var(--accent-indigo)" : "transparent",
-                color: stakeholderEditVisual ? "white" : "var(--text-secondary)",
-                border: "none",
-                padding: "2px 10px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              {language === "en" ? "Visual Form" : "Visuell bearbeiten"}
-            </button>
+            {!isStakeholderReadOnly && (
+              <button
+                onClick={() => setStakeholderEditVisual(true)}
+                style={{
+                  background: stakeholderEditVisual ? "var(--accent-indigo)" : "transparent",
+                  color: stakeholderEditVisual ? "white" : "var(--text-secondary)",
+                  border: "none",
+                  padding: "2px 10px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {language === "en" ? "Visual Form" : "Visuell bearbeiten"}
+              </button>
+            )}
           </div>
           <button
             onClick={() => {

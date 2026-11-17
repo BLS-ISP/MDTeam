@@ -6,6 +6,7 @@ import IssueDrawer from "../IssueDrawer";
 import {
   AgileIssue,
   extractAllIssues,
+  parseReleases,
   parseSprints,
   serializeIssueToMarkdown,
 } from "../../utils/issueEngine";
@@ -19,6 +20,8 @@ import {
   CommandPaletteModal,
   GitBranchModal,
 } from "../CommandPaletteAndModals";
+import { AuthLoginModal, TeamAndWebhookAdminModal } from "../auth";
+import { GitConflictResolverModal } from "../modals/GitConflictResolverModal";
 import { INITIAL_FILES } from "../../constants/seedFiles";
 import { useWorkspaceContext } from "../../context/WorkspaceContext";
 import { CheatsheetModal } from "../editor/CheatsheetModal";
@@ -75,11 +78,84 @@ export function WorkspaceModalsHost() {
     triggerDownload,
     diffTargetFile,
     setDiffTargetFile,
+    serverMode,
+    resolvedApiBase,
+    configuredServerUrl,
+    authUser,
+    oidcEnabled,
+    oidcProvider,
+    activeProjectId,
+    sessionToken,
+    loginLocal,
+    logout,
+    startOidcLogin,
+    setCustomServerUrl,
+    refreshTeamAndProjects,
+    isAuthModalOpen,
+    setIsAuthModalOpen,
+    isTeamAdminModalOpen,
+    setIsTeamAdminModalOpen,
+    isConflictModalOpen,
+    setIsConflictModalOpen,
+    refreshConflicts,
+    isStakeholderReadOnly,
   } = useWorkspaceContext();
 
   return (
     <>
       <WorkspaceQuickDialogs />
+
+      {/* Multi-User Authentication & Enterprise OIDC SSO Modal */}
+      <AuthLoginModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        language={language}
+        apiBaseUrl={resolvedApiBase || configuredServerUrl}
+        currentUser={authUser}
+        oidcEnabled={oidcEnabled}
+        oidcProvider={oidcProvider}
+        onLoginSubmit={loginLocal}
+        onLogout={logout}
+        onStartOidcLogin={() => startOidcLogin("/")}
+        onSaveServerUrl={setCustomServerUrl}
+      />
+
+      {/* Team RBAC Accounts, OIDC Admin & Outgoing Teams/Slack Webhooks Modal */}
+      <TeamAndWebhookAdminModal
+        isOpen={isTeamAdminModalOpen}
+        onClose={() => setIsTeamAdminModalOpen(false)}
+        language={language}
+        apiBaseUrl={resolvedApiBase || configuredServerUrl}
+        currentUser={authUser}
+        onUsersUpdated={() => {
+          void refreshTeamAndProjects();
+        }}
+      />
+
+      {/* Guided Git Conflict Resolver (Tauri + Server Git-Bridge + In-Memory) */}
+      <GitConflictResolverModal
+        isOpen={isConflictModalOpen}
+        onClose={() => setIsConflictModalOpen(false)}
+        language={language}
+        files={files}
+        onUpsertFile={handleUpsertWorkspaceFile}
+        isTauri={isTauri}
+        tauriRootFolder={tauriRootFolder || null}
+        serverMode={serverMode}
+        projectId={serverMode ? activeProjectId : null}
+        apiBaseUrl={resolvedApiBase}
+        authToken={sessionToken || null}
+        onConflictResolved={() => {
+          void refreshConflicts();
+          if (isTauri && tauriRootFolder) {
+            void rescanTauriFiles(tauriRootFolder);
+            void syncGitStatus(tauriRootFolder);
+          }
+        }}
+        onAllResolved={() => {
+          void refreshConflicts();
+        }}
+      />
 
       {/* Global Ctrl+K Command Palette / Omnibox */}
       <CommandPaletteModal
@@ -94,18 +170,22 @@ export function WorkspaceModalsHost() {
         language={language}
         roleMode={roleMode}
         enableGlobalShortcut={true}
-        onCreateIssue={openQuickCreateIssue}
+        onCreateIssue={isStakeholderReadOnly ? undefined : openQuickCreateIssue}
         onOpenScrumBoard={() => {
           setActivePanel("pm");
           setPmSubTab("scrum");
         }}
-        onOpenImportModal={() => setIsImportModalOpen(true)}
-        onOpenGitBranchModal={() => {
-          setPendingBranchName("");
-          setPendingBranchIssue(null);
-          setIsGitBranchModalOpen(true);
-        }}
-        onOpenTemplateGallery={() => setIsTemplateGalleryOpen(true)}
+        onOpenImportModal={isStakeholderReadOnly ? undefined : () => setIsImportModalOpen(true)}
+        onOpenGitBranchModal={
+          isStakeholderReadOnly
+            ? undefined
+            : () => {
+                setPendingBranchName("");
+                setPendingBranchIssue(null);
+                setIsGitBranchModalOpen(true);
+              }
+        }
+        onOpenTemplateGallery={isStakeholderReadOnly ? undefined : () => setIsTemplateGalleryOpen(true)}
         onExportDocx={() => triggerDownload("docx", "single")}
         onToggleStakeholderMode={() =>
           handleRoleModeChange(roleMode === "stakeholder" ? "developer" : "stakeholder")
@@ -202,6 +282,7 @@ export function WorkspaceModalsHost() {
           language={language}
           onClose={() => setIsPageHistoryOpen(false)}
           onRestoreVersion={(restoredContent) => {
+            if (isStakeholderReadOnly) return;
             handleUpsertWorkspaceFile({ ...activeFile, content: restoredContent });
             setIsPageHistoryOpen(false);
           }}
@@ -230,6 +311,7 @@ export function WorkspaceModalsHost() {
           const allIssuesNow = extractAllIssues(files);
           const epicsNow = allIssuesNow.filter((i) => i.type === "epic");
           const sprintsNow = parseSprints(files);
+          const releasesNow = parseReleases(files, allIssuesNow);
           return (
             <IssueDrawer
               issue={quickCreateDraft}
@@ -237,6 +319,7 @@ export function WorkspaceModalsHost() {
               isNew={isQuickDrawerNew}
               epics={epicsNow}
               sprints={sprintsNow}
+              releases={releasesNow}
               allIssues={allIssuesNow}
               currentUser={currentUser}
               language={language}
@@ -254,7 +337,7 @@ export function WorkspaceModalsHost() {
                 }
               }}
               onDelete={
-                !isQuickDrawerNew
+                !isQuickDrawerNew && !isStakeholderReadOnly
                   ? (deletedIssue) => {
                       handleDeleteWorkspaceFile(deletedIssue.filePath || `issues/${deletedIssue.id}.md`);
                       setIsQuickCreateIssueOpen(false);

@@ -1,111 +1,93 @@
 # MDTeam Workspace
 
-A collaborative, **Git-native Jira + Confluence + arc42 Desktop & Web Platform** built for engineering teams, Scrum Masters, Product Owners, and non-technical Stakeholders.
+A collaborative, **Git-native Jira + Confluence + arc42 Desktop & Multi-User Web Platform** built for engineering teams, Scrum Masters, Product Owners, and non-technical Stakeholders.
 
-Built as a native desktop application (Windows, macOS, Linux) using **Tauri v2 (Rust)** and **Next.js 16 (React 19, TypeScript)**, MDTeam Workspace stores every ticket, sprint, Confluence knowledge page, Architecture Decision Record (ADR), and arc42 chapter as human-readable Markdown + YAML files directly inside your Git repository—zero external relational database required.
+Built as both a native desktop application (**Tauri v2 / Rust**) and a self-hosted multi-user web platform (**Next.js 16 + Zero-Dependency Node 20 Git-Bridge API**), MDTeam Workspace stores every ticket, sprint, release, Confluence knowledge page, Architecture Decision Record (ADR), and arc42 chapter as human-readable Markdown + YAML files directly inside your Git repository—zero external relational database required.
 
 ---
 
 ## 🌟 Key Features
 
-### 1. Git-Native Jira & Scrum Engine (`issues/*.md`, `sprints/*.md`)
-*   **Structured Agile Issue Hierarchy:** First-class **Epics, User Stories, Bugs, and Tasks** stored as `issues/MDT-*.md` with round-trip YAML frontmatter (`id`, `type`, `status`, `priority`, `story_points`, `sprint`, `epic`, `assignee`, `blocked_by`, `branch`, `start_date`, `end_date`) and Markdown sections (`Description`, `Acceptance Criteria`, `Comments`).
-*   **5-Column Interactive Kanban Board:** HTML5 drag-and-drop across `Backlog` → `Ready` → `In Progress` → `In Review` → `Done`, configurable **WIP Limits** with red capacity alerts, **Swimlanes** (`None`, `By Assignee`, `By Epic`, `By Priority`), and JQL-style live filtering (`type:bug status:in-progress assignee:@me is:blocked`).
-*   **Backlog & Sprint Planning:** Create sprints (`sprints/sprint-*.md`), assign issues, inspect Story Point load vs. team capacity (`management/capacity.md`), **Start / Complete Sprints** (rolling over unfinished work and appending velocity history automatically), and **1-click migrate** legacy `management/sprint-backlog.md` checklists into structured `issues/MDT-*.md` files.
-*   **Real-Time Planning Poker:** Interactive Fibonacci estimation (`0, 1, 2, 3, 5, 8, 13, 21, ?`) synchronized live via **Yjs WebSocket** awareness rooms, with an instant offline team-consensus simulation mode when working locally.
-*   **Date-Driven Gantt Roadmap:** Real date-math timeline (`Month` / `Quarter` zoom) plotting Epics, Stories, and `management/roadmap.md` milestones with progress bars, a live `Today` marker, and SVG dependency arrows for `blocked_by` relationships.
-*   **Real Agile Metrics:** Dynamic SVG **Sprint Burndown**, **Sprint Burnup** (with mid-sprint scope-creep detection), **Cumulative Flow Diagram (CFD)**, and historical **Velocity** bar charts computed directly from Story Points.
+### 1. Multi-User Backend API, Enterprise SSO & Scrum RBAC (`server/`)
+*   **Zero-Dependency Node 20 Git-Bridge (`server/src/`):** Multi-project Git repository engine (`${DATA_DIR}/repos/<projectId>`) committing every Markdown & binary asset mutation with authenticated user `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL` attribution and strict path/flag sanitization (`execFile("git", ...)`).
+*   **Local & Enterprise OIDC SSO Authentication (`AuthLoginModal`):**
+    *   Local accounts hashed with `crypto.scrypt` + random 16-byte salt + `timingSafeEqual` and signed `HttpOnly; SameSite=Lax` HMAC-SHA256 JWT session cookies.
+    *   Built-in OAuth2 / OIDC PKCE + signed CSRF `state` flow for **Keycloak**, **Microsoft Entra ID**, **GitHub**, and **GitLab**.
+*   **Role-Based Access Control (`TeamAndWebhookAdminModal`):**
+    *   Five first-class Scrum roles: `admin`, `product-owner`, `scrum-master`, `developer`, and `stakeholder`.
+    *   **Stakeholder Read-Only Enforcement:** Stakeholders are strictly blocked (`403`) from mutating wiki pages, tickets, sprints, or backlog priority while permitted to post inline review comments and feedback (`.mdteam/inline-comments.json`).
+    *   **Product Owner Authority:** Enforces PO/Admin accountability on Product Backlog ordering, Product Goal updates, and Sprint Review acceptance.
+*   **Outgoing Team Webhooks:** Dispatches **Microsoft Teams Adaptive Cards v1.4**, **Slack Block Kit**, and generic JSON/Email notifications on blockers, `@mentions`, ticket assignments, reviews, and sprint transitions.
 
-### 2. Confluence-Grade Wiki, Live Query Macros & DOCX Export
-*   **Live Query Macro (`LiveQueryBlock`):** Embed dynamic, Confluence-style database views inside any Markdown page using fenced ```` ```query ```` blocks:
-    ````markdown
-    ```query
-    FROM issues
-    WHERE sprint = sprint-01
-    SORT priority desc
-    VIEW table
-    ```
-    ````
-    Supports `FROM issues | adrs | pages | roadmap | arc42 | wiki | sprints | all`, `WHERE` filters (`=`, `!=`, `~`, `in`, `>`), `SORT`, and instant interactive toggling between **Table**, **Cards**, and **Stats** views.
-*   **Document Lifecycle Governance (`PageGovernanceBar`):** Manage page review states (`Draft` → `In Review` → `Approved`), record `@approver` & timestamp metadata in YAML frontmatter, view word count & estimated reading time, and launch templates or page history in one click.
-*   **Inline Review Comments (`InlineCommentsDrawer`):** Highlight quotes or lines to open anchored review threads with `@mentions`, reply history, and `Resolve / Reopen` tracking persisted in `.mdteam/inline-comments.json`.
-*   **Page Version History & Time Machine (`PageHistoryModal`):** Inspect native Git commit history (`git log --follow` & `git show <hash>:<path>`) or browser session snapshots side-by-side in Monaco `DiffEditor` and restore any prior version in one click.
-*   **Template Gallery (`TemplateGalleryModal`):** Scaffold **arc42 Chapters**, **ADRs**, **RFC / Tech Specs**, **Sprint Retrospectives**, **Product Requirements (PRDs)**, and **Post-Mortem / Incident Reports** with pre-wired Live Query blocks.
-*   **Clipboard & Drag-and-Drop Screenshots:** Paste (`Ctrl+V`) or drag-and-drop images directly into the editor—automatically saved to `assets/<timestamp>-<name>.png` in Tauri mode or compressed inline Data-URLs in browser mode.
-*   **Zero-Dependency Word (`.docx`) & PDF Book Export:** Native PKZIP + CRC32 OpenXML `.docx` generator (`docxExporter.ts`) exporting single pages or compiled multi-chapter **arc42 Manuals** with styled headings, runs, tables, checklists, and blockquotes alongside print-ready PDF & HTML exports.
+### 2. Scrum Guide Policy Engine & 4 Guided Ceremonies (`src/utils/scrum-rules/`, `ceremonies/`)
+*   **Configurable Process Modes (`.mdteam/scrum-policy.md`):** Switch per project between **Strict Scrum**, **Pragmatic Scrum** (allows justified overrides logged as `[SCRUM-OVERRIDE: <RULE>]` comments), and **Kanban Flow**.
+*   **Automated Scrum Quality Gates (`ScrumGateModal`):**
+    *   **Definition of Ready (DoR):** Validates Story Points (`> 0`), Acceptance Criteria, Assignee, Description, and open `blocked_by` dependencies before pulling into a Sprint.
+    *   **Definition of Done (DoD):** Blocks moving to `Done` when any Acceptance Criterion or **Subtask** is unchecked or blockers remain open.
+    *   **0-SP-for-Undone Velocity Rule:** On Sprint Completion, only 100% DoD-compliant `Done` items contribute to velocity (`computeStrictSprintVelocity`); unfinished work contributes `0 SP` and rolls over cleanly.
+*   **4 Interactive Ceremony Wizards (`ScrumPolicyAndGoalBar`):**
+    *   **Sprint Planning Wizard:** 3-step capacity check, Sprint Goal commitment, and DoR-checked backlog pull.
+    *   **Daily Scrum Board-Walk:** 15:00 timebox timer walking Right-to-Left (`Review → In Progress → Ready`), quick blocker flagging, and Parking Lot notes.
+    *   **Sprint Review Modal:** Live Velocity breakdown, PO 1-click `Accept / Return to In Progress`, and Stakeholder feedback capture into new backlog tickets.
+    *   **Sprint Retrospective Wizard:** Glad / Sad / Impediments sticky board with dot-voting, `[SCRUM-OVERRIDE]` audit review, and mandatory Sprint Improvement Action Ticket creation.
 
-### 3. Role Modes, Command Palette (`Ctrl+K`), Atlassian Importer & GitOps
-*   **Three Tailored Workspace Modes (`WorkspaceHeaderControls`):**
-    *   **Developer Mode:** Full VSCode-style Monaco Split Editor, Live Preview, Git Source Control, Syntax Cheatsheet, and Real-Time Linter.
-    *   **Scrum Mode:** Launches straight into the Git-Native Jira & Scrum Workspace alongside Retrospectives and the Daily Standup Assistant.
-    *   **Stakeholder / PM Clean Mode:** Hides raw code, Git, and developer clutter—presenting a distraction-free **Confluence Wiki Reader**, **Visual Form Editor**, and **Jira Board** for Product Managers and Stakeholders.
-*   **Global Command Palette (`Ctrl+K` / `Cmd+K`):** Instant fuzzy-search omnibox across all Jira issues, Wiki pages, arc42 docs, ADRs, and workspace quick actions.
-*   **Notification Inbox & Identity Switcher:** Switch active `@handle` (`@developer-a`, `@developer-b`, `@scrum-master`, `@product-owner`, or custom) and receive live unread badges for assigned issues, `@mentions`, blocked sprint items, and documents `In Review`.
-*   **Atlassian Migration Wizard (`AtlassianImportModal`):** Import **Jira CSV** exports, **Jira REST JSON** (including Atlassian Document Format / ADF rich text), and **Confluence HTML** exports (converting Confluence info/warning/code macros and tables into clean Markdown) with built-in 1-click sample datasets.
-*   **Issue-to-Branch GitOps Bridge (`GitBranchModal`):** Create and check out sanitized `feat/<ID>-<slug>` or `fix/<ID>-<slug>` branches directly from any Jira issue via native Tauri Rust Git commands (`git_current_branch`, `git_list_branches`, `git_checkout_branch`, `git_file_history`, `git_show_file_at_commit`) and automatically link `branch:` in the issue's frontmatter.
+### 3. Deep Jira Mechanics: Subtasks, Releases, Attachments & Hours (`src/utils/issues/`)
+*   **Subtasks & Time Tracking:** Inline `## Subtasks` checklists (`- [x] SUB-1: Title | @dev | est:4h | rem:0h`) and YAML time fields (`estimated_hours`, `logged_hours`, `remaining_hours`) with `+1h / +2h / +4h` quick work-log buttons.
+*   **Versioned Ticket Attachments:** Drag-and-drop screenshots & files onto any issue—stored under `assets/issues/<ID>/<filename>` (Tauri FS / Server Git-Bridge) with image lightbox previews.
+*   **Release Management & 1-Click Release Notes (`ReleasesTab`):** Manage `.mdteam/releases.md` (`planned | unreleased | released`), filter board via `fixversion:v1.0.0`, track release progress bars, and generate Confluence Release Notes (`wiki/releases/<version>.md`) with live ```` ```query ```` blocks in one click.
+*   **Kanban, Gantt, Planning Poker & Dual Burndown:** 5-column Kanban board with WIP limits & swimlanes, SVG Gantt dependency roadmap, Yjs Planning Poker, and **Story Points (`SP`) / Remaining Hours (`h`)** Burndown & Burnup charts.
 
-### 4. Unified Knowledge Graph & Real-Time Quality Linter
-*   **Interactive Force-Directed Graph (`DocumentGraph`):** Visualizes `arc42`, `ADRs`, `Issues`, `Sprints`, `Wiki`, `Roadmap`, and `Meetings` with directed edges for Markdown links, `@[file#L1-L10]` transclusions, `epic:` parent links, and red dashed `blocked_by:` dependency links.
-*   **Real-Time Governance Linter (`linter.ts`):** Validates broken transclusions, empty arc42 sections, mandatory ADR sections, date ranges, `issues/*.md` assignee/Story Point readiness, unresolved `blocked_by` IDs, and **Definition of Done (DoD)** / **Definition of Ready (DoR)** compliance in both German and English.
+### 4. Confluence-Grade Nested Wiki, WYSIWYG Blocks & Approval Lock (`src/utils/wiki/`)
+*   **Arbitrary-Depth Page Tree & Link-Safe Refactoring (`ExplorerPanel`):** Unlimited nested page hierarchy (`wiki/architecture/security/oidc.md`) with drag-and-drop move/rename that automatically rewrites `[label](path#anchor)` links and `@[path#L1-L10]` transclusions across the entire workspace.
+*   **Write-Protection Governance (`ApprovalLockBanner`):** Approved Wiki pages (`review_status: approved`) and Accepted ADRs (`## Status: Accepted`) automatically lock Monaco (`readOnly: true`), toolbar actions, and visual forms—offering 1-click **"Unlock as New Revision (In Review)"** (`revision` bump) or **"Supersede with New ADR"** (`ADR-000X`).
+*   **Visual Table & Callout WYSIWYG (`GenericBlockEditor`):** Interactive Markdown table row/column/alignment editor, GitHub/Confluence Callout cards (`[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`), Live Query Macros, Inline Comments, Git Time Machine, and zero-dependency `.docx` export.
 
----
-
-## 🛠️ Technology Stack
-
-*   **Frontend Framework:** [Next.js 16](https://nextjs.org/) (`output: "export"`, React 19, TypeScript)
-*   **Desktop Runtime:** [Tauri v2](https://v2.tauri.app/) (Rust backend with `@tauri-apps/plugin-fs` & `@tauri-apps/plugin-dialog`)
-*   **Code & Diff Editor:** [Monaco Editor](https://microsoft.github.io/monaco-editor/) (`@monaco-editor/react`)
-*   **Real-Time Collaboration:** [Yjs](https://yjs.dev/), `y-websocket`, and `y-monaco` CRDTs
-*   **Diagrams:** [Mermaid.js](https://mermaid.js.org/) & interactive [diagrams.net / Draw.io](https://www.draw.io/) embeds
+### 5. Guided 3-Way Git Merge Conflict Resolver (`GitConflictResolverModal`)
+*   Detects Git merge conflicts across **Tauri Desktop** (`git status --porcelain`, `:1:path` base, `:2:path` ours, `:3:path` theirs), **Multi-User Server Mode** (`/api/projects/:id/git/conflicts`), and in-memory conflict markers (`<<<<<<<` / `|||||||` / `=======` / `>>>>>>>`).
+*   Provides status bar & Git panel conflict alerts, 1-click **Keep Ours / Keep Theirs / Keep Both** hunk resolution, side-by-side Monaco `DiffEditor`, and zero-marker validation before staging & committing.
 
 ---
 
 ## 📂 Folder Structure
 
-Every source module in `src/` and `src-tauri/src/` follows a strict `<= 500` lines modularity rule with clean barrel entrypoints:
+Every source and test file across `src/`, `server/src/`, `src-tauri/src/`, and `tests/` enforces a strict `<= 500` lines modularity gate (`scripts/check-file-sizes.mjs`):
 
 ```text
 MDTeam/
-├── issues/                     # Git-native Jira tickets (MDT-101.md .. MDT-105.md)
-├── sprints/                    # Active & planned Scrum sprints (sprint-01.md)
+├── issues/                     # Git-native Jira tickets (MDT-*.md)
+├── sprints/                    # Active & planned Scrum sprints (sprint-*.md)
+├── server/                     # Zero-dependency Node 20 Multi-User API & Git-Bridge
+│   ├── src/
+│   │   ├── auth/               # scrypt user store, HMAC-SHA256 JWT cookies & OIDC PKCE
+│   │   ├── git/                # Sanitized execFile("git") bridge, sync & 3-stage conflicts
+│   │   ├── notifications/      # MS Teams Adaptive Cards, Slack Block Kit & Email webhooks
+│   │   ├── routes/             # Multi-project REST file/asset/git endpoints
+│   │   └── index.ts            # HTTP server entrypoint (port 4000)
+│   └── tsconfig.json
 ├── src/
-│   ├── app/                    # Next.js App Router shell (layout.tsx, page.tsx, globals.css)
+│   ├── app/                    # Next.js 16 App Router shell (output: "export")
 │   ├── components/
-│   │   ├── editor/             # Split Monaco/Preview shell, Stakeholder reader & visual-editors/
-│   │   ├── layout/             # AppTopBar, ActivityStrip, AppStatusBar, HeaderControls & ModalsHost
-│   │   ├── modals/             # Command Palette (Ctrl+K), Atlassian Importer, Git Branch & Identity
-│   │   ├── panels/             # Explorer, Git, Meetings, Settings, Cheatsheet & PM sub-panels
-│   │   ├── scrum/              # Kanban, Backlog, Gantt, Agile Metrics, issue-drawer/ & poker/
-│   │   ├── wiki/               # Governance Bar, Inline Comments, LiveQueryBlock, History & Templates
-│   │   └── *.tsx               # Thin public barrels + DocumentGraph, GlobalSearch, Problems, DiffViewer
-│   ├── constants/              # Translations, workspace seeds/ & Confluence/Jira templates/samples
-│   ├── context/                # WorkspaceContext provider & typed state orchestration
-│   ├── hooks/                  # Tauri FS/Git sync, editor actions, Yjs collaboration & exports
-│   ├── styles/                 # Domain stylesheets (tokens, workspace-layout, preview, agile-forms)
-│   ├── types/                  # Shared WorkspaceFile & Agile domain interfaces
-│   └── utils/
-│       ├── docx/               # Zero-dependency PKZIP/CRC32 OpenXML .docx builder
-│       ├── importers/          # Jira CSV, Jira JSON (ADF) & Confluence HTML converters
-│       ├── issues/             # Issue/Sprint YAML serializers, JQL filter, Burndown/CFD & Gantt math
-│       ├── linter/             # Bilingual DoD/DoR, ADR & Scrum readiness rules
-│       ├── query/              # Declarative ```query``` macro parser & executor
-│       ├── workspace/          # Markdown/Mermaid/Transclusion renderer, Monaco setup & FS scanner
-│       └── *.ts                # Public utility barrels, frontmatter.ts & graphParser.ts
-├── src-tauri/
-│   ├── src/lib.rs              # Native Git CLI & GitOps branch/history Rust commands
-│   └── tauri.conf.json         # Tauri v2 configuration & capabilities
-├── AGENTS.md                   # Framework & <=500-line modularity rules
-└── README.md
+│   │   ├── auth/               # AuthLoginModal & TeamAndWebhookAdminModal
+│   │   ├── editor/             # Split Monaco/Preview, ApprovalLockBanner & visual-editors/
+│   │   ├── layout/             # AppTopBar, ActivityStrip, AppStatusBar & ModalsHost
+│   │   ├── modals/             # Command Palette, Atlassian Importer & GitConflictResolverModal
+│   │   ├── panels/             # Nested Explorer tree, GitPanel, PM Dashboard & Settings
+│   │   ├── scrum/              # Kanban, Backlog, Releases, Gantt, Metrics & ceremonies/
+│   │   └── wiki/               # PageGovernanceBar, ApprovalLockBanner, LiveQuery & Comments
+│   ├── context/                # WorkspaceContext provider
+│   ├── hooks/                  # Server sync/RBAC bridge, Tauri FS/Git, Yjs & DOCX export
+│   ├── types/                  # Agile, Auth/RBAC, ScrumPolicy & Workspace interfaces
+│   └── utils/                  # Scrum policy engine, issue/release/wiki/conflict/DOCX engines
+├── src-tauri/                  # Tauri v2 Rust desktop backend & sanitized Git conflict commands
+├── tests/                      # Automated unit & live multi-user server E2E test suites
+├── scripts/check-file-sizes.mjs
+├── docker-compose.yml          # Full-stack Nginx + Web + Node API + Yjs deployment
+└── package.json
 ```
 
 ---
 
 ## 🚀 Getting Started
-
-### Prerequisites
-*   [Node.js](https://nodejs.org/) (v18+)
-*   [Rust & Cargo](https://www.rust-lang.org/) (for building the native Tauri desktop binary)
-*   [Git](https://git-scm.com/) (for native repository & branch operations)
 
 ### 1. Install Dependencies
 ```bash
@@ -113,36 +95,41 @@ npm install
 ```
 
 ### 2. Run in Development
+*   **Web Frontend (`http://localhost:3000`):**
+    ```bash
+    npm run dev
+    ```
+*   **Multi-User Backend API (`http://localhost:4000`):**
+    ```bash
+    npx tsc -p server/tsconfig.json && node server/dist/index.js
+    ```
+    *(Localhost seeds demo accounts `admin`, `po`, `sm`, `dev-a`, `dev-b`, and `stakeholder` — set `MDTEAM_INITIAL_PASSWORD` and `JWT_SECRET` in production.)*
+*   **Native Desktop App (Tauri v2):**
+    ```bash
+    npx tauri dev
+    ```
+*   **Docker Compose (Nginx + Static Web + Multi-User API + Yjs WebSocket):**
+    ```bash
+    docker compose up -d --build
+    ```
 
-#### A. Native Desktop Application (Tauri v2)
+### 3. Automated Quality Gates, Tests & Production Builds
 ```bash
-npx tauri dev
-```
+# 1. Enforce <= 500 lines modularity rule across src/, server/src/, src-tauri/src/, tests/
+node scripts/check-file-sizes.mjs
 
-#### B. Web Browser Sandbox
-```bash
-npm run dev
-```
-Open [http://localhost:3000](http://localhost:3000) in your browser. All Scrum, Confluence, DOCX export, Live Query, Planning Poker, and Atlassian Import features work seamlessly in both Tauri desktop mode and browser sandbox mode.
+# 2. Typecheck Frontend & Multi-User Server Backend
+npx tsc --noEmit
+npx tsc -p server/tsconfig.json
 
-### 3. Production Build
-Build the static Next.js export (`out/`):
-```bash
+# 3. Run Unit & Live Server E2E Test Suite (Scrum rules, Jira/Releases, Wiki/Conflicts, Auth/RBAC/Git)
+npm test
+
+# 4. Run Rust Unit Tests & Build Production Artifacts
+cargo test --lib --manifest-path src-tauri/Cargo.toml
 npm run build
-```
-Compile the native release desktop executable (`src-tauri/target/release/app.exe` on Windows):
-```bash
 npx tauri build --no-bundle
 ```
-
----
-
-## 🤝 Real-Time Collaboration (Yjs)
-Start a local Yjs WebSocket server for multi-user Monaco editing and live Planning Poker rooms:
-```bash
-npx y-websocket
-```
-Open **Settings** in MDTeam Workspace and connect to `ws://localhost:1234` (or launch both web + Yjs containers via `docker-compose up -d --build`).
 
 ---
 

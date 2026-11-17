@@ -46,6 +46,7 @@ export interface PageGovernanceBarProps {
   onOpenHistory: () => void;
   onOpenTemplates: () => void;
   onExportDocx?: () => void;
+  hideLockBanner?: boolean;
 }
 
 export interface InlineCommentsDrawerProps {

@@ -16,46 +16,101 @@ import {
   Link,
   List,
   ListOrdered,
+  Lock,
   Minus,
   Quote,
   Sparkles,
   Table as TableIcon,
 } from "lucide-react";
 import { useWorkspaceContext } from "../../context/WorkspaceContext";
+import { isDocumentWriteProtected } from "../../utils/wiki/documentProtection";
 
 export function EditorToolbar() {
-  const { insertTemplateBlock, setShowCheatsheetModal } = useWorkspaceContext();
+  const {
+    files,
+    activeFile,
+    splitActive,
+    activeEditorPane,
+    activeFilePathB,
+    isStakeholderReadOnly,
+    language,
+    insertTemplateBlock,
+    setShowCheatsheetModal,
+  } = useWorkspaceContext();
+
+  const targetFile =
+    activeEditorPane === "B" && splitActive && activeFilePathB
+      ? files.find((f) => f.path === activeFilePathB) || activeFile
+      : activeFile;
+
+  const protection = isDocumentWriteProtected(targetFile);
+  const isLocked = protection.locked || isStakeholderReadOnly;
+  const isEn = language === "en";
+
+  const btnStyle: React.CSSProperties | undefined = isLocked
+    ? { opacity: 0.4, cursor: "not-allowed" }
+    : undefined;
+
+  const triggerInsert = (blockType: string) => {
+    if (isLocked) return;
+    insertTemplateBlock(blockType);
+  };
 
   return (
     <div className="editor-toolbar">
-      <button className="action-icon-btn" onClick={() => insertTemplateBlock("todo")} title="Aufgabe / Checkliste">
+      {isLocked && (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "4px",
+            padding: "2px 8px",
+            marginRight: "4px",
+            borderRadius: "4px",
+            backgroundColor: "rgba(245, 158, 11, 0.16)",
+            border: "1px solid rgba(245, 158, 11, 0.4)",
+            color: "var(--accent-yellow)",
+            fontSize: "10.5px",
+            fontWeight: 700,
+          }}
+        >
+          <Lock size={11} />
+          <span>{isEn ? "Read-Only" : "Schreibgeschützt"}</span>
+        </span>
+      )}
+
+      <button className="action-icon-btn" disabled={isLocked} style={btnStyle} onClick={() => triggerInsert("todo")} title="Aufgabe / Checkliste">
         <CheckSquare size={14} />
       </button>
-      <button className="action-icon-btn" onClick={() => insertTemplateBlock("table")} title="Tabelle einfügen">
+      <button className="action-icon-btn" disabled={isLocked} style={btnStyle} onClick={() => triggerInsert("table")} title="Tabelle einfügen">
         <TableIcon size={14} />
       </button>
       <button
         className="action-icon-btn"
-        onClick={() => insertTemplateBlock("query")}
+        disabled={isLocked}
+        style={btnStyle}
+        onClick={() => triggerInsert("query")}
         title="Live Query Macro (Jira/ADR/Pages Tabelle) einfügen"
       >
         <Database size={14} style={{ color: "var(--accent-green)" }} />
       </button>
-      <button className="action-icon-btn" onClick={() => insertTemplateBlock("mermaid")} title="Mermaid UML Diagramm">
+      <button className="action-icon-btn" disabled={isLocked} style={btnStyle} onClick={() => triggerInsert("mermaid")} title="Mermaid UML Diagramm">
         <CodeIcon size={14} />
       </button>
-      <button className="action-icon-btn" onClick={() => insertTemplateBlock("drawio")} title="Draw.io Diagramm einfügen">
+      <button className="action-icon-btn" disabled={isLocked} style={btnStyle} onClick={() => triggerInsert("drawio")} title="Draw.io Diagramm einfügen">
         <Box size={14} style={{ color: "var(--accent-indigo)" }} />
       </button>
-      <button className="action-icon-btn" onClick={() => insertTemplateBlock("adr")} title="ADR Architektur-Vorlage">
+      <button className="action-icon-btn" disabled={isLocked} style={btnStyle} onClick={() => triggerInsert("adr")} title="ADR Architektur-Vorlage">
         <Sparkles size={14} />
       </button>
-      <button className="action-icon-btn" onClick={() => insertTemplateBlock("roadmap-item")} title="Roadmap-Meilenstein Block">
+      <button className="action-icon-btn" disabled={isLocked} style={btnStyle} onClick={() => triggerInsert("roadmap-item")} title="Roadmap-Meilenstein Block">
         <Calendar size={14} />
       </button>
       <button
         className="action-icon-btn"
-        onClick={() => insertTemplateBlock("reference")}
+        disabled={isLocked}
+        style={btnStyle}
+        onClick={() => triggerInsert("reference")}
         title="Referenz aus anderem Dokument einbetten (@[pfad#L1-L5])"
       >
         <FileText size={14} style={{ color: "var(--accent-indigo)" }} />
@@ -63,38 +118,40 @@ export function EditorToolbar() {
 
       <div className="toolbar-separator" />
 
-      <button className="action-icon-btn" onClick={() => insertTemplateBlock("bold")} title="Fett markieren">
+      <button className="action-icon-btn" disabled={isLocked} style={btnStyle} onClick={() => triggerInsert("bold")} title="Fett markieren">
         <Bold size={14} />
       </button>
-      <button className="action-icon-btn" onClick={() => insertTemplateBlock("italic")} title="Kursiv markieren">
+      <button className="action-icon-btn" disabled={isLocked} style={btnStyle} onClick={() => triggerInsert("italic")} title="Kursiv markieren">
         <Italic size={14} />
       </button>
-      <button className="action-icon-btn" onClick={() => insertTemplateBlock("link")} title="Link einfügen">
+      <button className="action-icon-btn" disabled={isLocked} style={btnStyle} onClick={() => triggerInsert("link")} title="Link einfügen">
         <Link size={14} />
       </button>
       <button
         className="action-icon-btn"
-        onClick={() => insertTemplateBlock("image")}
+        disabled={isLocked}
+        style={btnStyle}
+        onClick={() => triggerInsert("image")}
         title="Bild einfügen (oder Screenshot per Ctrl+V / Drag & Drop)"
       >
         <ImageIcon size={14} />
       </button>
-      <button className="action-icon-btn" onClick={() => insertTemplateBlock("bullet-list")} title="Aufzählungliste">
+      <button className="action-icon-btn" disabled={isLocked} style={btnStyle} onClick={() => triggerInsert("bullet-list")} title="Aufzählungliste">
         <List size={14} />
       </button>
-      <button className="action-icon-btn" onClick={() => insertTemplateBlock("ordered-list")} title="Nummerierte Liste">
+      <button className="action-icon-btn" disabled={isLocked} style={btnStyle} onClick={() => triggerInsert("ordered-list")} title="Nummerierte Liste">
         <ListOrdered size={14} />
       </button>
-      <button className="action-icon-btn" onClick={() => insertTemplateBlock("code-block")} title="Codeblock einfügen">
+      <button className="action-icon-btn" disabled={isLocked} style={btnStyle} onClick={() => triggerInsert("code-block")} title="Codeblock einfügen">
         <CodeIcon size={14} style={{ opacity: 0.8 }} />
       </button>
-      <button className="action-icon-btn" onClick={() => insertTemplateBlock("quote")} title="Zitat-Block">
+      <button className="action-icon-btn" disabled={isLocked} style={btnStyle} onClick={() => triggerInsert("quote")} title="Zitat-Block">
         <Quote size={14} />
       </button>
-      <button className="action-icon-btn" onClick={() => insertTemplateBlock("horizontal-rule")} title="Trennlinie einfügen">
+      <button className="action-icon-btn" disabled={isLocked} style={btnStyle} onClick={() => triggerInsert("horizontal-rule")} title="Trennlinie einfügen">
         <Minus size={14} />
       </button>
-      <button className="action-icon-btn" onClick={() => insertTemplateBlock("details")} title="Dropdown-Details Block">
+      <button className="action-icon-btn" disabled={isLocked} style={btnStyle} onClick={() => triggerInsert("details")} title="Dropdown-Details Block">
         <ChevronDown size={14} />
       </button>
       <div style={{ width: "1px", height: "16px", backgroundColor: "var(--border-color)", margin: "0 4px" }} />

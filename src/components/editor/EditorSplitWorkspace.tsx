@@ -1,10 +1,11 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import Editor from "@monaco-editor/react";
 import { Eye, FileDown, FileText, Split, X } from "lucide-react";
 import ProblemsPanel from "../ProblemsPanel";
 import {
+  ApprovalLockBanner,
   PageGovernanceBar,
   handlePasteOrDropImage,
   countOpenInlineComments,
@@ -12,7 +13,13 @@ import {
 import { useWorkspaceContext } from "../../context/WorkspaceContext";
 import { parseMarkdown } from "../../utils/workspace/markdownRenderer";
 import { registerCustomCompletions } from "../../utils/workspace/monacoSetup";
+import {
+  createSupersedingAdr,
+  isDocumentWriteProtected,
+  startNewDocumentRevision,
+} from "../../utils/wiki/documentProtection";
 import { EditorToolbar } from "./EditorToolbar";
+import { SecondarySplitEditorPane } from "./SecondarySplitEditorPane";
 import { StakeholderCleanEditor } from "./StakeholderCleanEditor";
 import { VisualEditorRouter } from "./visual-editors/VisualEditorRouter";
 
@@ -25,10 +32,6 @@ export function EditorSplitWorkspace() {
     setActiveFilePath,
     openTabs,
     handleCloseTab,
-    activeFilePathB,
-    setActiveFilePathB,
-    openTabsB,
-    handleCloseTabB,
     splitActive,
     setSplitActive,
     activeEditorPane,
@@ -48,13 +51,10 @@ export function EditorSplitWorkspace() {
     setShowProblemsPanel,
     editorRef,
     monacoRef,
-    editorRefB,
-    monacoRefB,
     setEditorAInstance,
-    setEditorBInstance,
     handleEditorChange,
-    updateMarkdownFileContent,
     handleUpsertWorkspaceFile,
+    handleUpsertMultipleFiles,
     handleOpenFile,
     handleOpenFileWithLineJump,
     insertMarkdownImage,
@@ -65,9 +65,38 @@ export function EditorSplitWorkspace() {
     setShowExportModal,
     setActivePanel,
     triggerDownload,
+    isStakeholderReadOnly,
   } = useWorkspaceContext();
 
+  const protectionA = isDocumentWriteProtected(activeFile);
+  const isReadOnlyA = protectionA.locked || isStakeholderReadOnly;
+
+  useEffect(() => {
+    if (editorRef.current && typeof editorRef.current.updateOptions === "function") {
+      editorRef.current.updateOptions({ readOnly: isReadOnlyA });
+    }
+  }, [isReadOnlyA, activeFilePath, editorRef]);
+
+  const handleStartNewRevisionA = () => {
+    if (!activeFile || isStakeholderReadOnly) return;
+    const unlocked = startNewDocumentRevision(activeFile, currentUser || "@editor");
+    void handleUpsertWorkspaceFile(unlocked);
+  };
+
+  const handleSupersedeAdrA = async () => {
+    if (!activeFile || isStakeholderReadOnly) return;
+    const { newAdr, updatedOldAdr } = createSupersedingAdr(
+      activeFile,
+      files,
+      currentUser || "@architect",
+      language
+    );
+    await handleUpsertMultipleFiles([updatedOldAdr, newAdr]);
+    handleOpenFile(newAdr.path);
+  };
+
   const handleEditorPasteCapture = async (e: React.ClipboardEvent<HTMLDivElement>) => {
+    if (isReadOnlyA) return;
     const items = Array.from(e.clipboardData?.items || []);
     const imageItem = items.find((item) => item.kind === "file" && item.type.startsWith("image/"));
     if (!imageItem) return;
@@ -83,6 +112,7 @@ export function EditorSplitWorkspace() {
   };
 
   const handleEditorDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    if (isReadOnlyA) return;
     const droppedFiles = Array.from(e.dataTransfer?.files || []);
     const imageFiles = droppedFiles.filter(
       (f) => f.type.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(f.name || "")
@@ -118,7 +148,7 @@ export function EditorSplitWorkspace() {
       style={{ display: "flex", flexDirection: "column", height: "100%" }}
       onPasteCapture={handleEditorPasteCapture}
       onDragOver={(e) => {
-        if (Array.from(e.dataTransfer?.types || []).includes("Files")) {
+        if (!isReadOnlyA && Array.from(e.dataTransfer?.types || []).includes("Files")) {
           e.preventDefault();
         }
       }}
@@ -132,6 +162,7 @@ export function EditorSplitWorkspace() {
           commentCount={countOpenInlineComments(files, activeFile.path)}
           isTauri={isTauri}
           language={language}
+          hideLockBanner={roleMode !== "stakeholder" && editorMode === "code"}
           onUpdateContent={(newContent) => {
             handleUpsertWorkspaceFile({ ...activeFile, content: newContent });
           }}
@@ -267,13 +298,27 @@ export function EditorSplitWorkspace() {
               {editorMode === "code" ? (
                 <>
                   <EditorToolbar />
+                  {activeFile && protectionA.locked && (
+                    <ApprovalLockBanner
+                      file={activeFile}
+                      reason={protectionA.reason}
+                      approvedBy={protectionA.approvedBy}
+                      language={language}
+                      compact
+                      onStartNewRevision={isStakeholderReadOnly ? undefined : handleStartNewRevisionA}
+                      onSupersedeAdr={isStakeholderReadOnly ? undefined : handleSupersedeAdrA}
+                    />
+                  )}
                   <div className="monaco-wrapper" style={{ flex: 1, minHeight: 0 }}>
                     <Editor
                       height="100%"
                       language="markdown"
                       theme="vs-dark"
                       value={activeFile?.content || ""}
-                      onChange={handleEditorChange}
+                      onChange={(val) => {
+                        if (isReadOnlyA) return;
+                        handleEditorChange(val);
+                      }}
                       onMount={(editor, monaco) => {
                         editorRef.current = editor;
                         monacoRef.current = monaco;
@@ -288,6 +333,7 @@ export function EditorSplitWorkspace() {
                         wordWrap: "on",
                         fontFamily: "var(--font-mono)",
                         automaticLayout: true,
+                        readOnly: isReadOnlyA,
                       }}
                     />
                   </div>
@@ -319,66 +365,7 @@ export function EditorSplitWorkspace() {
           </div>
 
           {/* Right Panel: Editor B */}
-          {splitActive && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", borderLeft: "1px solid var(--border-color)", minWidth: 0 }}>
-              <div className="editor-tabs" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", overflow: "hidden", position: "relative" }}>
-                <div style={{ display: "flex", overflowX: "auto", flex: 1, height: "100%", scrollbarWidth: "none" }}>
-                  {openTabsB.map((tabPath) => {
-                    const tabFile = files.find((f) => f.path === tabPath);
-                    return (
-                      <div
-                        key={tabPath}
-                        className={`editor-tab ${activeFilePathB === tabPath ? "active" : ""} ${activeEditorPane === "B" && activeFilePathB === tabPath ? "pane-focused" : ""}`}
-                        onClick={() => {
-                          setActiveFilePathB(tabPath);
-                          setActiveEditorPane("B");
-                        }}
-                      >
-                        <FileText size={12} />
-                        <span>{tabFile?.name}</span>
-                        {modifiedFiles[tabPath] && (
-                          <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "var(--accent-yellow)" }} />
-                        )}
-                        <span className="tab-close" onClick={(e) => handleCloseTabB(e, tabPath)}>
-                          <X size={10} />
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="editor-pane" style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-                <div className="monaco-wrapper" style={{ flex: 1, minHeight: 0 }}>
-                  <Editor
-                    height="100%"
-                    language="markdown"
-                    theme="vs-dark"
-                    value={files.find((f) => f.path === activeFilePathB)?.content || ""}
-                    onChange={(val) => {
-                      if (val === undefined) return;
-                      updateMarkdownFileContent(activeFilePathB, val);
-                    }}
-                    onMount={(editor, monaco) => {
-                      editorRefB.current = editor;
-                      monacoRefB.current = monaco;
-                      setEditorBInstance(editor);
-                      editor.onDidFocusEditorText(() => setActiveEditorPane("B"));
-                      registerCustomCompletions(monaco, filesRef);
-                    }}
-                    options={{
-                      minimap: { enabled: false },
-                      fontSize: 13,
-                      lineNumbers: "on",
-                      wordWrap: "on",
-                      fontFamily: "var(--font-mono)",
-                      automaticLayout: true,
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
+          {splitActive && <SecondarySplitEditorPane />}
 
           {/* Rightmost Panel: Preview */}
           {showPreview && !splitActive && (

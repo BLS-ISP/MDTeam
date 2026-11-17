@@ -12,6 +12,8 @@ import {
 import { BOARD_COLUMNS, ScrumCopy, SwimlaneMode } from "./scrumI18nAndStyles";
 import { KanbanFilterBar } from "./KanbanFilterBar";
 import { KanbanIssueCard } from "./KanbanIssueCard";
+import type { ScrumPolicyConfig, ScrumUserRole } from "../../types/scrumPolicy";
+import { normalizeScrumRole } from "../../utils/scrum-rules/scrumPolicyEngine";
 
 export interface KanbanBoardTabProps {
   t: ScrumCopy;
@@ -20,6 +22,8 @@ export interface KanbanBoardTabProps {
   sprints: AgileSprint[];
   activeSprint: AgileSprint | undefined;
   currentUser: string;
+  userRole?: ScrumUserRole;
+  policy?: ScrumPolicyConfig;
   boardScope: string;
   jqlQuery: string;
   swimlaneMode: SwimlaneMode;
@@ -46,6 +50,7 @@ export function KanbanBoardTab({
   sprints,
   activeSprint,
   currentUser,
+  userRole,
   boardScope,
   jqlQuery,
   swimlaneMode,
@@ -353,6 +358,10 @@ export function KanbanBoardTab({
                         draggedIssueId={draggedIssueId}
                         blockedBadgeLabel={t.blockedBadge}
                         onDragStart={(issueId, e) => {
+                          if (normalizeScrumRole(userRole) === "stakeholder") {
+                            e.preventDefault();
+                            return;
+                          }
                           onSetDraggedIssueId(issueId);
                           e.dataTransfer.setData("text/plain", issueId);
                           e.dataTransfer.effectAllowed = "move";
