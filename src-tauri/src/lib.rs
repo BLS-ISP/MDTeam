@@ -1,3 +1,9 @@
+pub mod git_conflicts;
+
+use git_conflicts::sanitize_git_file_path;
+pub use git_conflicts::{
+    git_get_conflict_versions, git_list_conflicts, git_resolve_conflict_file, ConflictFileVersions,
+};
 use std::process::Command;
 
 #[tauri::command]
@@ -153,30 +159,6 @@ fn sanitize_git_ref(input: &str, field_name: &str) -> Result<String, String> {
     Ok(trimmed.to_string())
 }
 
-fn sanitize_git_file_path(input: &str) -> Result<String, String> {
-    let normalized = input.trim().replace('\\', "/");
-    let mut clean = normalized.as_str();
-    while let Some(rest) = clean.strip_prefix("./") {
-        clean = rest;
-    }
-    if clean.is_empty() {
-        return Err("Invalid file_path: must not be empty".to_string());
-    }
-    if clean.starts_with('-') {
-        return Err("Invalid file_path: cannot start with '-' (flag injection blocked)".to_string());
-    }
-    if clean.starts_with('/') || clean.contains(':') {
-        return Err("Invalid file_path: must be a relative repository path".to_string());
-    }
-    if clean.chars().any(|c| c.is_control()) {
-        return Err("Invalid file_path: contains control characters".to_string());
-    }
-    if clean.split('/').any(|seg| seg.is_empty() || seg == "..") {
-        return Err("Invalid file_path: path traversal is not allowed".to_string());
-    }
-    Ok(clean.to_string())
-}
-
 #[tauri::command]
 fn git_current_branch(repo_path: String) -> Result<String, String> {
     let output = Command::new("git")
@@ -302,7 +284,10 @@ pub fn run() {
             git_list_branches,
             git_checkout_branch,
             git_file_history,
-            git_show_file_at_commit
+            git_show_file_at_commit,
+            git_conflicts::git_list_conflicts,
+            git_conflicts::git_get_conflict_versions,
+            git_conflicts::git_resolve_conflict_file
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

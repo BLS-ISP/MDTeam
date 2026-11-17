@@ -1,0 +1,47 @@
+name: CI Quality Gate
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+jobs:
+  quality-gate:
+    name: Modularity, Typecheck, Tests & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Enforce <= 500 lines modularity gate
+        run: node scripts/check-file-sizes.mjs
+
+      - name: Frontend TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Server Backend TypeScript check
+        run: |
+          if [ -f server/tsconfig.json ]; then
+            npx tsc -p server/tsconfig.json --noEmit
+          else
+            echo "server/tsconfig.json not found, skipping server tsc check."
+          fi
+
+      - name: Automated Test Suite
+        run: npm test --if-present
+
+      - name: Production Frontend Build
+        run: npm run build
