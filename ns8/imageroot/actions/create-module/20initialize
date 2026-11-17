@@ -35,10 +35,12 @@ agent.dump_env()
 
 existing_secrets = read_secrets_env("secrets.env")
 jwt_secret = existing_secrets.get("JWT_SECRET") or secrets.token_hex(32)
+initial_pw = existing_secrets.get("MDTEAM_INITIAL_PASSWORD") or secrets.token_urlsafe(18)
 
 initial_secrets = {
     "JWT_SECRET": jwt_secret,
     "MDTEAM_JWT_SECRET": jwt_secret,
+    "MDTEAM_INITIAL_PASSWORD": initial_pw,
     "MDTEAM_COOKIE_SECURE": "true",
     "LDAP_ENABLED": "false",
     "LDAP_DOMAIN": "",

@@ -1,5 +1,11 @@
 import { HttpError } from "../httpHelpers.js";
+import { assertSafeOutboundUrl } from "../security/ssrfDnsGuard.js";
 import type { AuthUser, WebhookConfig, WebhookEventType } from "../types.js";
+
+const WEBHOOK_SSRF_GUARD_OPTS = {
+  allowLocalEnvVar: "MDTEAM_ALLOW_LOCAL_WEBHOOKS",
+  allowLocalWhenSkipAutostart: true,
+} as const;
 
 export interface OutgoingNotificationPayload {
   event: WebhookEventType;
@@ -243,6 +249,16 @@ function buildGenericEmailJsonPayload(
   };
 }
 
+export async function validateWebhookPatchUrls(patch: Partial<WebhookConfig>): Promise<void> {
+  const candidates = [patch.teamsWebhookUrl, patch.slackWebhookUrl, patch.emailWebhookUrl];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      const validUrl = validateOutboundWebhookUrl(candidate);
+      await assertSafeOutboundUrl(validUrl, WEBHOOK_SSRF_GUARD_OPTS);
+    }
+  }
+}
+
 async function postJsonWebhook(
   channel: "teams" | "slack" | "email",
   rawUrl: string,
@@ -250,13 +266,15 @@ async function postJsonWebhook(
 ): Promise<ChannelDispatchResult> {
   try {
     const validUrl = validateOutboundWebhookUrl(rawUrl);
-    const resp = await fetch(validUrl, {
+    const safeUrl = await assertSafeOutboundUrl(validUrl, WEBHOOK_SSRF_GUARD_OPTS);
+    const resp = await fetch(safeUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json; charset=utf-8",
         "User-Agent": "MDTeam-WebhookDispatcher/1.0",
       },
       body: JSON.stringify(bodyObj),
+      redirect: "error",
       signal: AbortSignal.timeout(8000),
     });
 
