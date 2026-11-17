@@ -3,6 +3,16 @@
 All notable changes to **MDTeam Workspace** are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-11-17
+
+### Added
+- **Online Git Repository Clone & Multi-Project Switcher (`server/src/git/`, `src/components/git/`):** Logged-in Developers, Scrum Masters, Product Owners, and Admins can now clone real external Git repositories (GitHub, GitLab, Gitea, Forgejo, Bitbucket, self-hosted Git) directly in the browser, test remote connectivity & discover branches live via `git ls-remote`, switch between multiple online projects in `ExplorerPanel`, and choose between **Shared Team Projects** and **Private Developer Workspaces**.
+- **AES-256-GCM Encrypted HTTPS PAT & Ed25519 SSH Deploy Key Auth:** Built-in encrypted Git credential store (`DATA_DIR/git-projects.json`, `0600`) with automatic stripping of embedded `https://user:token@host` URLs, ephemeral `GIT_CONFIG_COUNT` HTTP Basic Auth headers (zero plaintext tokens in `.git/config` or process arguments), and 1-click pure-crypto **Ed25519 OpenSSH Deploy Key** generation + `openssh-client` support in `Dockerfile.api`.
+- **Full Online Branch Management, Push/Pull & File Git History:** Wired `GitPanel`, `GitBranchModal` (including 1-click *Create Branch from Issue*), and `PageHistoryModal` to real Server Git-Bridge endpoints (`/git/branches`, `/git/checkout`, `/git/commit`, `/git/history`, `/git/file-at-commit`), plus automated Smart HTTP (`git http-backend`) E2E test suite (`tests/onlineGitIntegration.test.ts`).
+
+### Security
+- **Git Protocol & SSRF Hardening:** Enforced `-c protocol.allow=never` with explicit `https`/`ssh` allowlisting, disabled host `credential.helper` prompts (`GCM_INTERACTIVE=never`), blocked loopback/link-local metadata SSRF targets (`127.0.0.0/8`, `::1`, `169.254.0.0/16`, `accountprovider`), redacted secrets from Git `stderr` responses, and excluded symlinks in repository tree scans.
+
 ## [1.1.0] - 2026-11-17
 
 ### Added

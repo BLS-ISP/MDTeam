@@ -26,13 +26,13 @@
     "source": "ghcr.io/bls-isp/mdteam",
     "versions": [
       {
-        "tag": "1.1.0",
+        "tag": "1.2.0",
         "testing": false,
         "labels": {
           "org.opencontainers.image.source": "https://github.com/BLS-ISP/MDTeam",
           "org.nethserver.authorizations": "traefik@node:routeadm cluster:accountconsumer",
           "org.nethserver.flags": "",
-          "org.nethserver.images": "ghcr.io/bls-isp/mdteam/workspace-web:1.1.0 ghcr.io/bls-isp/mdteam/api-server:1.1.0 ghcr.io/bls-isp/mdteam/yjs-server:1.1.0",
+          "org.nethserver.images": "ghcr.io/bls-isp/mdteam/workspace-web:1.2.0 ghcr.io/bls-isp/mdteam/api-server:1.2.0 ghcr.io/bls-isp/mdteam/yjs-server:1.2.0",
           "org.nethserver.max-per-node": "5",
           "org.nethserver.min-core": "3.0.0",
           "org.nethserver.rootfull": "0",

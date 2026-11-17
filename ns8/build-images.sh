@@ -11,7 +11,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 REPobase="${REPobase:-ghcr.io/bls-isp}"
 reponame="mdteam"
-IMAGETAG="${IMAGETAG:-1.1.0}"
+IMAGETAG="${IMAGETAG:-1.2.0}"
 
 APP_TAG="${APP_TAG:-${IMAGETAG}}"
 if [[ "${IMAGETAG}" == "latest" || "${APP_TAG}" == "latest" ]]; then

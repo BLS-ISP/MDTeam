@@ -19,7 +19,7 @@ RUN find /imageroot -name "__pycache__" -type d -exec rm -rf {} + && \
 
 # Stage 3: Assemble rootless NethServer 8 OCI module archive
 FROM scratch
-ARG APP_VERSION=1.1.0
+ARG APP_VERSION=1.2.0
 COPY --from=imageroot-builder /imageroot /imageroot
 COPY --from=ui-builder /usr/src/ui/dist /ui
 

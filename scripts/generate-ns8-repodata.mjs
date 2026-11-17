@@ -79,6 +79,31 @@ fs.writeFileSync(
   "utf8"
 );
 
+function replaceInFile(relPath, replacer) {
+  const full = path.join(REPO_ROOT, relPath);
+  const current = fs.readFileSync(full, "utf8");
+  const next = replacer(current).replace(/\r\n?/g, "\n");
+  if (next !== current) {
+    fs.writeFileSync(full, next, "utf8");
+  }
+}
+
+replaceInFile("ns8/Containerfile", (s) =>
+  s.replace(/ARG APP_VERSION=\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?/, `ARG APP_VERSION=${version}`)
+);
+replaceInFile("ns8/build-images.sh", (s) =>
+  s.replace(/IMAGETAG="\$\{IMAGETAG:-\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?\}"/, `IMAGETAG="\${IMAGETAG:-${version}}"`)
+);
+replaceInFile("ns8/imageroot/actions/create-module/20initialize", (s) =>
+  s.replace(/(ghcr\.io\/bls-isp\/mdteam\/[a-z-]+:)\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?/g, `$1${version}`)
+);
+replaceInFile("ns8/imageroot/update-module.d/20pull_images", (s) =>
+  s.replace(/(ghcr\.io\/bls-isp\/mdteam\/[a-z-]+:)\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?/g, `$1${version}`)
+);
+replaceInFile("ns8/ui/package.json", (s) =>
+  s.replace(/"version":\s*"[^"]+"/, `"version": "${version}"`)
+);
+
 function normalizeLf(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === "node_modules" || entry.name === "dist") continue;

@@ -89,6 +89,7 @@ flowchart LR
 | **Admin** | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 * **1-Click Jira & Confluence Importer:** Migrate Jira CSV exports, Jira REST JSON (including Atlassian Document Format comments/descriptions), and Confluence HTML/Markdown spaces via an interactive preview wizard.
+* **Online Git Repository Clone, PAT & SSH Deploy Key Auth:** Logged-in Developers, Scrum Masters, Product Owners, and Admins can clone real external GitHub, GitLab, Gitea, Forgejo, Bitbucket, or internal corporate Git repositories directly in the browser, verify branches via `git ls-remote`, authenticate via **AES-256-GCM encrypted HTTPS Personal Access Tokens** or **1-click Ed25519 SSH Deploy Keys**, switch between Shared Team Projects and Private Developer Workspaces, manage server branches, and push/pull commits online.
 * **Guided 3-Way Git Conflict Assistant & Outgoing Webhooks:** Resolve sync conflicts in 1 click (*Keep Mine*, *Keep Team's*, or *Side-by-Side Merge*) without raw `<<<<<<<` markers, and dispatch real-time **MS Teams Adaptive Cards**, **Slack Block Kit**, and **Email/JSON Webhooks**.
 
 ---
@@ -106,7 +107,7 @@ Install **MDTeam Workspace** onto any **NethServer 8 (NS8)** cluster node as an 
 
 ### Option B: One-Command SSH Installation (Strict SemVer)
 ```bash
-add-module ghcr.io/bls-isp/mdteam:1.1.0 1
+add-module ghcr.io/bls-isp/mdteam:1.2.0 1
 ```
 
 1. In **NS8 Cluster-Admin** (`https://<ns8-host>/cluster-admin`), open **Applications** → **MDTeam Workspace (`mdteam1`)** → **Settings**.
@@ -118,10 +119,10 @@ add-module ghcr.io/bls-isp/mdteam:1.1.0 1
 ## 🐳 Production Docker Deployment (Prebuilt GHCR Images — Strict SemVer)
 
 Every release publishes four SemVer-tagged OCI images to GitHub Container Registry (never `:latest`):
-* `ghcr.io/bls-isp/mdteam:1.1.0` — Rootless NethServer 8 module (`imageroot` + Cluster-Admin Cockpit UI)
-* `ghcr.io/bls-isp/mdteam/workspace-web:1.1.0` — Next.js UI + Nginx reverse proxy (`/` UI, `/api/*` → API, `/ws` → Yjs)
-* `ghcr.io/bls-isp/mdteam/api-server:1.1.0` — Zero-dependency Node 20 Auth, RBAC, Git-Bridge & Webhook server
-* `ghcr.io/bls-isp/mdteam/yjs-server:1.1.0` — Real-time CRDT collaboration & Planning Poker server
+* `ghcr.io/bls-isp/mdteam:1.2.0` — Rootless NethServer 8 module (`imageroot` + Cluster-Admin Cockpit UI)
+* `ghcr.io/bls-isp/mdteam/workspace-web:1.2.0` — Next.js UI + Nginx reverse proxy (`/` UI, `/api/*` → API, `/ws` → Yjs)
+* `ghcr.io/bls-isp/mdteam/api-server:1.2.0` — Zero-dependency Node 20 Auth, RBAC, Git-Bridge & Webhook server
+* `ghcr.io/bls-isp/mdteam/yjs-server:1.2.0` — Real-time CRDT collaboration & Planning Poker server
 
 ### Quick Start with Prebuilt Images
 Create a `docker-compose.prod.yml` (or run `docker compose up -d --build` from a cloned repo):
@@ -129,7 +130,7 @@ Create a `docker-compose.prod.yml` (or run `docker compose up -d --build` from a
 ```yaml
 services:
   workspace-web:
-    image: ghcr.io/bls-isp/mdteam/workspace-web:1.1.0
+    image: ghcr.io/bls-isp/mdteam/workspace-web:1.2.0
     ports:
       - "80:80"
     restart: always
@@ -138,7 +139,7 @@ services:
       - yjs-server
 
   api-server:
-    image: ghcr.io/bls-isp/mdteam/api-server:1.1.0
+    image: ghcr.io/bls-isp/mdteam/api-server:1.2.0
     restart: always
     environment:
       - NODE_ENV=production
@@ -151,7 +152,7 @@ services:
       - mdteam-data:/data
 
   yjs-server:
-    image: ghcr.io/bls-isp/mdteam/yjs-server:1.1.0
+    image: ghcr.io/bls-isp/mdteam/yjs-server:1.2.0
     ports:
       - "1234:1234"
     restart: always
